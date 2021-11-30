@@ -1,0 +1,7 @@
+numpy
+pandas
+scikit-optimize
+scikit-learn
+lgbm
+xgboost
+catboost
