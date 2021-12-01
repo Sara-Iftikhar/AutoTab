@@ -2,6 +2,6 @@ numpy
 pandas
 scikit-optimize
 scikit-learn
-lgbm
+lightgbm
 xgboost
 catboost

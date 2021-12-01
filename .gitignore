@@ -1,0 +1,29 @@
+*.csv
+*.xlsx
+*.png
+
+*.npy
+
+*.qgz
+
+.ipynb_checkpoints/
+__pycache__/
+.idea/
+.vscode/
+
+*junk.py
+
+# private stuff
+results/
+data/
+paper/
+
+
+# run time junk
+examples/.jovianrc
+examples/catboost_info/
+catboost_info/
+*catboost_info/
+examples/paper_figs/catboost_info/
+tests/__MACOSX/
+tests/catboost_info/
