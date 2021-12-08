@@ -106,6 +106,9 @@ class OptimizePipeline(object):
 
         self.parent_prefix = f"pipeline_opt_{dateandtime_now()}"
 
+        self.child_val_metrics = np.full((self.parent_iters, self.child_iters),
+                                         np.nan)
+
     @property
     def models(self):
         return self._models
@@ -178,6 +181,11 @@ class OptimizePipeline(object):
                      columns=list(self.metrics.keys()) + ['val_scores']
                      ).to_csv(fpath)
 
+        # save results of child iterations as csv file
+        fpath = os.path.join(os.getcwd(), "results", self.parent_prefix,
+                             "child_iters.csv")
+        pd.DataFrame(self.child_val_metrics,
+                     columns=[f'iter_{i}' for i in range(self.child_iters)]).to_csv(fpath)
         return res
 
     def parent_objective(
@@ -268,10 +276,11 @@ class OptimizePipeline(object):
         """optimizes hyperparameters of an estimator"""
 
         CHILD_PREFIX = f"{self.child_iter_}_{dateandtime_now()}"
-        self.child_iter_ += 1
 
         def child_objective(**suggestions):
             """objective function for optimization of estimator parameters"""
+
+            self.child_iter_ += 1
 
             # build child model
             model = Model(
@@ -292,10 +301,14 @@ class OptimizePipeline(object):
             else:
                 val_score = model.cross_val_score()
 
+            # populate all child val scores
+            self.child_val_metrics[self.parent_iter_-1, self.child_iter_-1] = val_score
+
             return val_score
 
         # make space
         child_space = regression_space(num_samples=10)[estimator]['param_space']
+        self.child_iter_ = 0  # before starting child hpo, reset iteration counter
 
         optimizer = HyperOpt(
             self.child_algo,
@@ -304,7 +317,7 @@ class OptimizePipeline(object):
             param_space=child_space,
             verbosity=0,
             process_results=False,
-            opt_path=os.path.join(os.getcwd(), "results", self.parent_prefix, CHILD_PREFIX)
+            opt_path=os.path.join(os.getcwd(), "results", self.parent_prefix, CHILD_PREFIX),
         )
 
         optimizer.fit()

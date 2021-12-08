@@ -1,4 +1,15 @@
 import unittest
+import site
+import warnings
+
+site.addsitedir(r"E:\AA\automl")
+
+
+def warn(*args, **kwargs):
+    pass
+
+
+warnings.warn = warn
 
 from automl import OptimizePipeline
 
@@ -28,10 +39,10 @@ def run_basic(parent_algorithm="random", child_algorithm="random",
         child_val_metric=child_val_metric,
         monitor=['r2', 'nse'],
         models=[
-            "RandomForestRegressor",
-            "XGBRegressor",
-            "LGBMRegressor",
-            "CatBoostRegressor"
+            "LinearRegression",
+            "LassoLars",
+            "Lasso",
+            "PoissonRegressor"
         ],
         train_data="random",
         val_data="same",
@@ -40,7 +51,7 @@ def run_basic(parent_algorithm="random", child_algorithm="random",
 
     results = pl.fit(
     )
-    return results
+    return pl
 
 
 class TestRegression(unittest.TestCase):
@@ -52,7 +63,8 @@ class TestRegression(unittest.TestCase):
 
     def test_r2_as_val_metric(self):
 
-        run_basic(parent_val_metric="r2", child_val_metric="r2")
+        run_basic(parent_val_metric="r2", child_val_metric="r2",
+                  parent_iterations=10, child_iterations=25)
 
         return
 
