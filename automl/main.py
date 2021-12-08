@@ -147,6 +147,11 @@ class OptimizePipeline(object):
 
     @models.setter
     def models(self, x):
+        if x is None:
+            if self.mode == "regression":
+                x = list(regression_space(2).keys())
+            else:
+                x = list(classification_space(2).keys())
         self._models = x
 
     @property
