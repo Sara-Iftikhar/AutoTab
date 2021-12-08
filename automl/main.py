@@ -7,7 +7,6 @@ import gc
 from typing import Union
 from collections import OrderedDict
 
-
 import numpy as np
 import pandas as pd
 
@@ -36,11 +35,15 @@ class OptimizePipeline(object):
 
     - metrics
 
-    - parent_suggestions
+    - parent_suggestions:
+        an ordered dictionary of suggestions to the parent objective function
+        during parent hpo loop
 
-    - child_val_metrics
+    - child_val_metrics:
+        a numpy array containing val_metrics of all child hpo loops
 
     - optimizer
+        an instance of ai4water.hyperopt.HyperOpt for parent optimization
 
     Note
     -----
@@ -129,6 +132,15 @@ class OptimizePipeline(object):
         self.child_val_metrics = np.full((self.parent_iters, self.child_iters),
                                          np.nan)
 
+        if self.mode == "regression":
+            self.estimator_space = regression_space(num_samples=10)
+        else:
+            self.estimator_space = classification_space(num_samples=10)
+
+    @property
+    def path(self):
+        return os.path.join(os.getcwd(), "results", self.parent_prefix)
+
     @property
     def models(self):
         return self._models
@@ -138,12 +150,16 @@ class OptimizePipeline(object):
         self._models = x
 
     @property
-    def problem(self):
-        return "regression"
+    def mode(self):
+        return self._mode
+
+    @mode.setter
+    def mode(self, x):
+        self._mode = x
 
     @property
     def Metrics(self):
-        if self.problem == "regression":
+        if self.mode == "regression":
             return RegressionMetrics
         return ClassificationMetrics
 
@@ -166,12 +182,14 @@ class OptimizePipeline(object):
 
         return
 
-    def fit(self, previous_results=None):
+    def fit(self, previous_results=None) -> "ai4water.hyperopt.HyperOpt":
         """
 
         Arguments:
             previous_results:
                 path of file which contains xy values.
+        Returns:
+            an instance of ai4water.hyperopt.HyperOpt class which is used for optimization.
         """
 
         self.reset()
@@ -181,7 +199,7 @@ class OptimizePipeline(object):
             param_space=self.space(),
             objective_fn=self.parent_objective,
             num_iterations=self.parent_iters,
-            opt_path=os.path.join(os.getcwd(), "results", self.parent_prefix)
+            opt_path=self.path
         )
 
         if previous_results is not None:
@@ -196,14 +214,13 @@ class OptimizePipeline(object):
         # add val_scores as new columns
         errors = np.column_stack([errors, list(self.val_scores_.values())])
         # save the errors being monitored
-        fpath = os.path.join(os.getcwd(), "results", self.parent_prefix, "errors.csv")
+        fpath = os.path.join(self.path, "errors.csv")
         pd.DataFrame(errors,
                      columns=list(self.metrics.keys()) + ['val_scores']
                      ).to_csv(fpath)
 
         # save results of child iterations as csv file
-        fpath = os.path.join(os.getcwd(), "results", self.parent_prefix,
-                             "child_iters.csv")
+        fpath = os.path.join(self.path, "child_iters.csv")
         pd.DataFrame(self.child_val_metrics,
                      columns=[f'iter_{i}' for i in range(self.child_iters)]).to_csv(fpath)
         return res
@@ -327,7 +344,7 @@ class OptimizePipeline(object):
             return val_score
 
         # make space
-        child_space = regression_space(num_samples=10)[estimator]['param_space']
+        child_space = self.estimator_space[estimator]['param_space']
         self.child_iter_ = 0  # before starting child hpo, reset iteration counter
 
         optimizer = HyperOpt(
@@ -337,7 +354,7 @@ class OptimizePipeline(object):
             param_space=child_space,
             verbosity=0,
             process_results=False,
-            opt_path=os.path.join(os.getcwd(), "results", self.parent_prefix, CHILD_PREFIX),
+            opt_path=os.path.join(self.path, CHILD_PREFIX),
         )
 
         optimizer.fit()
