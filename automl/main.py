@@ -26,12 +26,26 @@ SEP = os.sep
 class OptimizePipeline(object):
     """
     optimizes model/estimator to use, its hyperparameters and preprocessing
-    operation to be performed on features.
+    operation to be performed on features. It consists of two hpo loops. The
+    parent or outer loop optimizes preprocessing/feature engineering, feature
+    selection and model selection while the child hpo loop optimizes hyperparmeters
+    of child hpo loop.
 
-    Attributes:
-        metrics
+    Attributes
+    -----------
 
+    - metrics
 
+    - parent_suggestions
+
+    - child_val_metrics
+
+    - optimizer
+
+    Note
+    -----
+    This optimizationa always sovlves a minimization problem even if the val_metric
+    is r2.
     """
     def __init__(
             self,
@@ -47,6 +61,7 @@ class OptimizePipeline(object):
             parent_cross_validator: str = None,
             child_cross_validator: str = None,
             monitor: Union[list, str] = "r2",
+            mode: str = "regression",
             **model_kws
     ):
         """
@@ -54,29 +69,33 @@ class OptimizePipeline(object):
 
         Arguments:
             data:
-
+                A pandas dataframe
             features:
-
+                Features on which feature engineering/transformation is to be applied
             models:
-
+                The models to consider during optimzatino.
             parent_iterations:
-
+                Number of iterations for parent optimization loop
             child_iterations:
-
+                Number of iterations for child optimization loop
             parent_algorithm:
-
+                Algorithm for optimization of parent optimzation
             child_algorithm:
-
+                Algorithm for optimization of child optimization
             parent_val_metric:
-
+                Validation metric to calculate val_score in parent objective function
             child_val_metric:
-
+                Validation metric to calculate val_score in child objective function
             parent_cross_validator:
-
+                cross validator to be used in parent objective function. If None,
+                then val_score will be calculated on validation data
             child_cross_validator:
-
+                cross validator to be used in child objective function. If None,
+                then val_score will be caclulated on validation data
             monitor:
-
+                Nmaes of performance metrics to monitor in parent hpo loop
+            mode:
+                whether this is a `regression` problem or `classification`
             model_kws:
                 any additional key word arguments for ai4water's Model
 
@@ -92,6 +111,7 @@ class OptimizePipeline(object):
         self.child_val_metric = child_val_metric
         self.parent_cv = parent_cross_validator
         self.child_cv = child_cross_validator
+        self.mode = mode
         self.model_kwargs = model_kws
 
         # self.seed = None

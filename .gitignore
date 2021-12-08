@@ -18,6 +18,9 @@ results/
 data/
 paper/
 
+# docs
+site/
+
 
 # run time junk
 examples/.jovianrc

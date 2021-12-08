@@ -1,0 +1,13 @@
+site_name: AI4Water
+
+#google_analytics: ['UA-27795084-5']
+
+repo_url: https://github.com/Sara-Iftikhar/automl
+
+theme:
+  name: "material"
+
+plugins:
+- search
+- autorefs
+- mkdocstrings
