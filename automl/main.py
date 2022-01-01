@@ -4,7 +4,8 @@ site.addsitedir('E:\\AA\\AI4Water')
 
 import os
 import gc
-from typing import Union
+import math
+from typing import Union, Dict
 from collections import OrderedDict
 
 import numpy as np
@@ -20,6 +21,11 @@ from ai4water.utils.utils import MATRIC_TYPES
 
 
 SEP = os.sep
+
+DEFAULT_TRANSFORMATIONS = [
+    "minmax", "center", "scale", "zscore", "box-cox", "yeo-johnson",
+    "quantile", "robust", "log", "log2", "log10", "sqrt", "none",
+              ]
 
 
 class OptimizePipeline(object):
@@ -50,10 +56,13 @@ class OptimizePipeline(object):
     This optimizationa always sovlves a minimization problem even if the val_metric
     is r2.
     """
+
     def __init__(
             self,
-            data: pd.DataFrame,
-            features,
+            inputs_to_transform,
+            input_transformations: Union[list, dict] = None,
+            outputs_to_transform=None,
+            output_transformations: Union[list] = None,
             models: list = None,
             parent_iterations: int = 100,
             child_iterations: int = 25,
@@ -71,10 +80,43 @@ class OptimizePipeline(object):
         initializes
 
         Arguments:
-            data:
-                A pandas dataframe
-            features:
-                Features on which feature engineering/transformation is to be applied
+            inputs_to_transform:
+                Input features on which feature engineering/transformation is to
+                be applied. By default all input features are considered.
+            input_transformations:
+                The transformations to be considered for input features.
+
+                If list, then it will be the names of transformations to be considered for
+                all input features. By default following transformations are considered
+
+                    - `minmax`  rescale from 0 to 1
+                    - `center`    center the data by subtracting mean from it
+                    - `scale`     scale the data by dividing it with its standard deviation
+                    - `zscore`    first performs centering and then scaling
+                    - `box-cox`
+                    - `yeo-johnson`
+                    - `quantile`
+                    - `robust`
+                    - `log`
+                    - `log2`
+                    - `log10`
+                    - `sqrt`    square root
+
+                The user can however, specify list of transformations to be considered for
+                each input feature. In such a case, this argument must be a dictionary
+                whose keys are names of input features and values are list of transformations.
+
+            outputs_to_transform:
+                Output features on which feature engineering/transformation is to
+                be applied.
+            output_transformations:
+                The transformations to be considered for outputs/targets. By default
+                following transformations are considered for outputs
+
+                    - `log`
+                    - `log10`
+                    - `sqrt`
+                    - `log2`
             models:
                 The models to consider during optimzatino.
             parent_iterations:
@@ -103,8 +145,10 @@ class OptimizePipeline(object):
                 any additional key word arguments for ai4water's Model
 
         """
-        self.data = data
-        self.features = features
+        self.inp_to_transform = inputs_to_transform
+        self.inp_transformations = input_transformations
+        self.out_to_transform = outputs_to_transform
+        self.y_transformations = output_transformations
         self.models = models
         self.parent_iters = parent_iterations
         self.child_iters = child_iterations
@@ -168,11 +212,59 @@ class OptimizePipeline(object):
             return RegressionMetrics
         return ClassificationMetrics
 
+    @property
+    def input_features(self):
+        if 'input_features' in self.model_kwargs:
+            return self.model_kwargs['input_features']
+        else:
+            raise ValueError
+
+    @property
+    def output_features(self):
+        if 'output_features' in self.model_kwargs:
+            return self.model_kwargs['output_features']
+        else:
+            raise ValueError
+
     def space(self) -> list:
         """makes the parameter space for parent hpo"""
 
-        sp = make_space(self.features, categories=[
-            "minmax", "zscore", "log", "robust", "quantile", "log2", "log10", "power", "none"])
+        append = None
+        if self.inp_transformations is None:
+            inp_transformations = DEFAULT_TRANSFORMATIONS
+        elif isinstance(self.inp_transformations, list):
+            inp_transformations = self.inp_transformations
+        else:
+            inp_transformations = DEFAULT_TRANSFORMATIONS
+            assert isinstance(self.inp_transformations, dict)
+            append = {}
+            for feature, transformation in self.inp_transformations.items():
+                assert isinstance(transformation, list)
+                append[feature] = transformation
+
+        if self.y_transformations:
+
+            if isinstance(self.y_transformations, list):
+                assert all([t in DEFAULT_TRANSFORMATIONS for t in self.y_transformations]), f"""
+                transformations must be one of {DEFAULT_TRANSFORMATIONS}"""
+
+                for out in self.output_features:
+                    append[out] = self.y_transformations
+
+            else:
+                assert isinstance(self.y_transformations, dict)
+                for out_feature, out_transformations in self.y_transformations.items():
+
+                    assert out_feature in self.output_features
+                    assert isinstance(out_transformations, list)
+                    assert all(
+                        [t in DEFAULT_TRANSFORMATIONS for t in self.y_transformations]), f"""
+                        transformations must be one of {DEFAULT_TRANSFORMATIONS}"""
+                    append[out_feature] = out_transformations
+
+        sp = make_space(self.inp_to_transform,
+                        categories=inp_transformations,
+                        append=append)
 
         algos = Categorical(self.models, name="estimator")
         sp = sp + [algos]
@@ -187,15 +279,23 @@ class OptimizePipeline(object):
 
         return
 
-    def fit(self, previous_results=None) -> "ai4water.hyperopt.HyperOpt":
+    def fit(
+            self,
+            data: pd.DataFrame,
+            previous_results=None
+    ) -> "ai4water.hyperopt.HyperOpt":
         """
 
         Arguments:
+            data:
+                A pandas dataframe
             previous_results:
                 path of file which contains xy values.
         Returns:
             an instance of ai4water.hyperopt.HyperOpt class which is used for optimization.
         """
+
+        self.data = data
 
         self.reset()
 
@@ -209,6 +309,13 @@ class OptimizePipeline(object):
 
         if previous_results is not None:
             parent_opt.add_previous_results(previous_results)
+
+        formatter = "{:<5} {:<18} " + "{:<15} " * (len(self.metrics))
+        print(formatter.format(
+            "Iter",
+            self.parent_val_metric,
+            *[k for k in self.metrics.keys()])
+        )
 
         res = parent_opt.fit()
 
@@ -234,66 +341,84 @@ class OptimizePipeline(object):
             self,
             **suggestions
     ) -> float:
-        """objective function for parent hpo loop"""
+        """objective function for parent hpo loop.
+        This objective fuction is to optimize transformations for each input
+        feature and the model.
+
+        Arguments:
+            suggestions:
+                key word arguments consisting of suggested transformation for each
+                input feature and the model to use
+        """
 
         self.parent_iter_ += 1
 
         # self.seed = np.random.randint(0, 10000, 1).item()
 
         # container for transformations for all features
-        transformations = []
+        x_transformations = []
+        y_transformations = []
 
-        for inp_feature, trans_method in suggestions.items():
+        for feature, method in suggestions.items():
 
-            if inp_feature in self.data:
-                if trans_method == "none":  # don't do anything with this feature
+            if feature in self.data:
+                if method == "none":  # don't do anything with this feature
                     pass
                 else:
                     # get the relevant transformation for this feature
-                    t = {"method": trans_method, "features": [inp_feature]}
+                    t = {"method": method, "features": [feature]}
 
                     # some preprocessing is required for log based transformations
-                    if trans_method.startswith("log"):
-                        t["replace_nans"] = True
-                        t["replace_zeros"] = True
+                    if method.startswith("log"):
                         t["treat_negatives"] = True
+                        t["replace_zeros"] = True
+                    elif method == "box-cox":
+                        t["treat_negatives"] = True
+                        t["replace_zeros"] = True
+                    elif method == "sqrt":
+                        t['treat_negatives'] = True
 
-                    transformations.append(t)
+                    if feature in self.input_features:
+                        x_transformations.append(t)
+                    else:
+                        y_transformations.append(t)
 
         # optimize the hyperparas of estimator using child objective
         opt_paras = self.optimize_estimator_paras(
             suggestions['estimator'],
-            transformations=transformations
+            x_transformations=x_transformations,
+            y_transformations=y_transformations or None
         )
 
         self.parent_suggestions[self.parent_iter_] = {
             # 'seed': self.seed,
-            'transformation': transformations,
+            'x_transformation': x_transformations,
+            'y_transformation': y_transformations,
             'estimator_paras': opt_paras
         }
 
         # fit the model with optimized hyperparameters and suggested transformations
         model = Model(
             model={suggestions["estimator"]: opt_paras},
-            data=self.data,
             val_metric=self.parent_val_metric,
             verbosity=0,
             # seed=self.seed,
-            transformation=transformations,
+            x_transformation=x_transformations,
+            y_transformation=y_transformations,
             prefix=self.parent_prefix,
             **self.model_kwargs
         )
 
         if self.parent_cv is None:  # train the model and evaluate it to calculate val_score
             # train the model
-            model.fit()
+            model.fit(data=self.data)
 
             val_score = eval_model_manually(model, self.parent_val_metric, self.Metrics)
         else:  # val_score will be obtained by performing cross validation
-            val_score = model.cross_val_score()
+            val_score = model.cross_val_score(data=self.data)
 
         # calculate all additional performance metrics which are being monitored
-        t, p = model.predict('validation', return_true=True, process_results=False)
+        t, p = model.predict(data='validation', return_true=True, process_results=False)
         errors = RegressionMetrics(t, p, remove_zero=True, remove_neg=True)
 
         for k, v in self.metrics.items():
@@ -313,7 +438,8 @@ class OptimizePipeline(object):
 
     def optimize_estimator_paras(
             self, estimator: str,
-            transformations: list
+            x_transformations: list,
+            y_transformations: list
     ) -> dict:
         """optimizes hyperparameters of an estimator"""
 
@@ -327,10 +453,10 @@ class OptimizePipeline(object):
             # build child model
             model = Model(
                 model={estimator: suggestions},
-                data=self.data,
                 verbosity=0,
                 val_metric=self.child_val_metric,
-                transformation=transformations,
+                x_transformation=x_transformations,
+                y_transformation=y_transformations,
                 # seed=self.seed,
                 prefix=f"{self.parent_prefix}{SEP}{CHILD_PREFIX}",
                 **self.model_kwargs
@@ -338,10 +464,10 @@ class OptimizePipeline(object):
 
             if self.child_cv is None:
                 # fit child model
-                model.fit()
+                model.fit(data=self.data)
                 val_score = eval_model_manually(model, self.child_val_metric, self.Metrics)
             else:
-                val_score = model.cross_val_score()
+                val_score = model.cross_val_score(data=self.data)
 
             # populate all child val scores
             self.child_val_metrics[self.parent_iter_-1, self.child_iter_-1] = val_score
@@ -374,7 +500,7 @@ class OptimizePipeline(object):
 def eval_model_manually(model, metric: str, Metrics) -> float:
     """evaluates the model"""
     # make prediction on validation data
-    t, p = model.predict('validation', return_true=True, process_results=False)
+    t, p = model.predict(data='validation', return_true=True, process_results=False)
     errors = Metrics(t, p, remove_zero=True, remove_neg=True)
     val_score = getattr(errors, metric)()
 
@@ -386,7 +512,7 @@ def eval_model_manually(model, metric: str, Metrics) -> float:
         val_score = 1.0 - val_score
 
     # val_score can be None/nan/inf
-    if val_score != val_score:
+    if not math.isfinite(val_score):
         val_score = 1.0
 
     return val_score

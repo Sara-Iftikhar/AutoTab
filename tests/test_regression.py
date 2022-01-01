@@ -29,8 +29,7 @@ def run_basic(parent_algorithm="random", child_algorithm="random",
               ):
 
     pl = OptimizePipeline(
-        data=data,
-        features=inputs,
+        inputs_to_transform=inputs,
         parent_iterations=parent_iterations,
         child_iterations=child_iterations,
         parent_algorithm=parent_algorithm,
@@ -44,22 +43,25 @@ def run_basic(parent_algorithm="random", child_algorithm="random",
             "Lasso",
             "PoissonRegressor"
         ],
+        input_features=data.columns.tolist()[0:-1],
+        output_features=data.columns.tolist()[-1:],
         train_data="random",
         val_data="same",
         val_fraction=0.0,
     )
 
     results = pl.fit(
+        data=data
     )
     return pl
 
 
 class TestRegression(unittest.TestCase):
 
-    def test_basic(self):
-        run_basic()
-
-        return
+    # def test_basic(self):
+    #     run_basic()
+    #
+    #     return
 
     def test_r2_as_val_metric(self):
 
