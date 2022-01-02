@@ -26,6 +26,7 @@ DEFAULT_TRANSFORMATIONS = [
     "minmax", "center", "scale", "zscore", "box-cox", "yeo-johnson",
     "quantile", "robust", "log", "log2", "log10", "sqrt", "none",
               ]
+DEFAULT_Y_TRANFORMATIONS = ["log", "log2", "log10", "sqrt"]
 
 
 class OptimizePipeline(object):
@@ -84,7 +85,8 @@ class OptimizePipeline(object):
                 Input features on which feature engineering/transformation is to
                 be applied. By default all input features are considered.
             input_transformations:
-                The transformations to be considered for input features.
+                The transformations to be considered for input features. Default is None,
+                in which case all input features are considered.
 
                 If list, then it will be the names of transformations to be considered for
                 all input features. By default following transformations are considered
@@ -108,7 +110,7 @@ class OptimizePipeline(object):
 
             outputs_to_transform:
                 Output features on which feature engineering/transformation is to
-                be applied.
+                be applied. If None, then transformations on outputs are not applied.
             output_transformations:
                 The transformations to be considered for outputs/targets. By default
                 following transformations are considered for outputs
@@ -146,9 +148,8 @@ class OptimizePipeline(object):
 
         """
         self.inp_to_transform = inputs_to_transform
-        self.inp_transformations = input_transformations
-        self.out_to_transform = outputs_to_transform
-        self.y_transformations = output_transformations
+        self.x_transformations = input_transformations
+        self.y_transformations = output_transformations or DEFAULT_Y_TRANFORMATIONS
         self.models = models
         self.parent_iters = parent_iterations
         self.child_iters = child_iterations
@@ -160,6 +161,7 @@ class OptimizePipeline(object):
         self.child_cv = child_cross_validator
         self.mode = mode
         self.model_kwargs = model_kws
+        self.out_to_transform = outputs_to_transform
 
         # self.seed = None
 
@@ -180,6 +182,20 @@ class OptimizePipeline(object):
             self.estimator_space = regression_space(num_samples=10)
         else:
             self.estimator_space = classification_space(num_samples=10)
+
+    @property
+    def out_to_transform(self):
+        return self._out_to_transform
+
+    @out_to_transform.setter
+    def out_to_transform(self, x):
+        if x:
+            if isinstance(x, str):
+                x = [x]
+            assert isinstance(x, list)
+            for i in x:
+                assert i in self.output_features
+        self._out_to_transform = x
 
     @property
     def path(self):
@@ -229,41 +245,47 @@ class OptimizePipeline(object):
     def space(self) -> list:
         """makes the parameter space for parent hpo"""
 
-        append = None
-        if self.inp_transformations is None:
-            inp_transformations = DEFAULT_TRANSFORMATIONS
-        elif isinstance(self.inp_transformations, list):
-            inp_transformations = self.inp_transformations
+        append = {}
+        y_categories = []
+
+        if self.x_transformations is None:
+            x_categories = DEFAULT_TRANSFORMATIONS
+        elif isinstance(self.x_transformations, list):
+            x_categories = self.x_transformations
         else:
-            inp_transformations = DEFAULT_TRANSFORMATIONS
-            assert isinstance(self.inp_transformations, dict)
-            append = {}
-            for feature, transformation in self.inp_transformations.items():
+            x_categories = DEFAULT_TRANSFORMATIONS
+            assert isinstance(self.x_transformations, dict)
+
+            for feature, transformation in self.x_transformations.items():
                 assert isinstance(transformation, list)
                 append[feature] = transformation
 
-        if self.y_transformations:
+        if self.out_to_transform:
+            # if the user has provided name of any outupt feature
+            # on feature transformation is to be applied
 
             if isinstance(self.y_transformations, list):
-                assert all([t in DEFAULT_TRANSFORMATIONS for t in self.y_transformations]), f"""
-                transformations must be one of {DEFAULT_TRANSFORMATIONS}"""
+                assert all([t in DEFAULT_Y_TRANFORMATIONS for t in self.y_transformations]), f"""
+                transformations must be one of {DEFAULT_Y_TRANFORMATIONS}"""
 
                 for out in self.output_features:
                     append[out] = self.y_transformations
+                y_categories = self.y_transformations
 
             else:
                 assert isinstance(self.y_transformations, dict)
-                for out_feature, out_transformations in self.y_transformations.items():
+                for out_feature, y_transformations in self.y_transformations.items():
 
                     assert out_feature in self.output_features
-                    assert isinstance(out_transformations, list)
+                    assert isinstance(y_transformations, list)
                     assert all(
-                        [t in DEFAULT_TRANSFORMATIONS for t in self.y_transformations]), f"""
-                        transformations must be one of {DEFAULT_TRANSFORMATIONS}"""
-                    append[out_feature] = out_transformations
+                        [t in DEFAULT_Y_TRANFORMATIONS for t in self.y_transformations]), f"""
+                        transformations must be one of {DEFAULT_Y_TRANFORMATIONS}"""
+                    append[out_feature] = y_transformations
+                y_categories = list(self.y_transformations.values())
 
-        sp = make_space(self.inp_to_transform,
-                        categories=inp_transformations,
+        sp = make_space(self.inp_to_transform + (self.out_to_transform or []),
+                        categories=set(x_categories + y_categories),
                         append=append)
 
         algos = Categorical(self.models, name="estimator")

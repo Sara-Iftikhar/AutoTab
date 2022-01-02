@@ -5,3 +5,6 @@ scikit-learn
 lightgbm
 xgboost
 catboost
+hyperopt
+optuna
+matplotlib

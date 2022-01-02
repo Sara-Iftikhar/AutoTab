@@ -26,6 +26,7 @@ data = arg_beach(inputs=inputs)
 def run_basic(parent_algorithm="random", child_algorithm="random",
               parent_iterations=4, child_iterations=4,
               parent_val_metric="mse", child_val_metric="mse",
+              **kwargs
               ):
 
     pl = OptimizePipeline(
@@ -48,6 +49,7 @@ def run_basic(parent_algorithm="random", child_algorithm="random",
         train_data="random",
         val_data="same",
         val_fraction=0.0,
+        **kwargs
     )
 
     results = pl.fit(
@@ -56,19 +58,35 @@ def run_basic(parent_algorithm="random", child_algorithm="random",
     return pl
 
 
-class TestRegression(unittest.TestCase):
-
-    # def test_basic(self):
-    #     run_basic()
-    #
-    #     return
-
+class TestMetrics(unittest.TestCase):
+    """test different val_metrics for parent and child hpos"""
     def test_r2_as_val_metric(self):
 
         run_basic(parent_val_metric="r2", child_val_metric="r2",
                   parent_iterations=10, child_iterations=25)
 
         return
+
+
+class TestRegression(unittest.TestCase):
+
+    def test_basic(self):
+        run_basic()
+
+        return
+
+    def test_y_transformations(self):
+        output_transformations = ['sqrt', 'log', 'log10']
+        pl = run_basic(parent_algorithm="bayes",
+                            parent_iterations=12,
+                            outputs_to_transform='tetx_coppml',
+                            output_transformations=output_transformations
+                            )
+
+        y_transformation = pl.parent_suggestions[1]['y_transformation'][0]['method']
+        assert y_transformation in output_transformations
+        return
+
 
 
 if __name__ == "__main__":
