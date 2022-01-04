@@ -26,7 +26,7 @@ DEFAULT_TRANSFORMATIONS = [
     "minmax", "center", "scale", "zscore", "box-cox", "yeo-johnson",
     "quantile", "robust", "log", "log2", "log10", "sqrt", "none",
               ]
-DEFAULT_Y_TRANFORMATIONS = ["log", "log2", "log10", "sqrt"]
+DEFAULT_Y_TRANFORMATIONS = ["log", "log2", "log10", "sqrt", "none"]
 
 
 class OptimizePipeline(object):
@@ -172,6 +172,7 @@ class OptimizePipeline(object):
         self.metrics = {metric: OrderedDict() for metric in monitor}
 
         self.parent_suggestions = OrderedDict()
+        self.suggested_models = OrderedDict()
 
         self.parent_prefix = f"pipeline_opt_{dateandtime_now()}"
 
@@ -431,6 +432,8 @@ class OptimizePipeline(object):
             **self.model_kwargs
         )
 
+        self.suggested_models[self.parent_iter_] = {'path': model.path, 'name': suggestions['estimator']}
+
         if self.parent_cv is None:  # train the model and evaluate it to calculate val_score
             # train the model
             model.fit(data=self.data)
@@ -517,6 +520,40 @@ class OptimizePipeline(object):
 
         # return the optimized parameters
         return optimizer.best_paras()
+
+    def get_best_metric(
+            self,
+            metric_name:str
+    )->float:
+        """returns the best value of a particular performance metric.
+        The metric must be recorded i.e. must be given as `monitor` argument.
+        """
+        if metric_name not in self.metrics:
+            raise ValueError(f"{metric_name} is not a valid metric. Available "
+                             f"metrics are {self.metrics.keys()}")
+
+        if MATRIC_TYPES[metric_name] == "min":
+            return np.nanmin(list(self.metrics[metric_name].values()))
+        else:
+            return np.nanmax(list(self.metrics[metric_name].values()))
+
+    def get_best_pipeline_by_metric(
+            self,
+            metric_name:str
+    )->dict:
+        """returns the best pipeline with respect to a particular performance
+        metric. The metric must be recorded i.e. must be given as `monitor`
+        argument."""
+        if metric_name not in self.metrics:
+            raise ValueError(f"{metric_name} is not a valid metric. Available "
+                             f"metrics are {self.metrics.keys()}")
+
+        if MATRIC_TYPES[metric_name] == "min":
+            idx =  np.nanargmin(list(self.metrics[metric_name].values()))
+        else:
+            idx =  np.nanargmax(list(self.metrics[metric_name].values()))
+
+        return self.parent_suggestions[idx]
 
 
 def eval_model_manually(model, metric: str, Metrics) -> float:
