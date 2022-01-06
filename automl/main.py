@@ -433,7 +433,6 @@ class OptimizePipeline(object):
             'y_transformation': y_transformations,
             'model': {suggestions['estimator']: opt_paras},
             'path': model.path
-
         }
 
         if self.parent_cv:  # train the model and evaluate it to calculate val_score
@@ -554,7 +553,7 @@ class OptimizePipeline(object):
         else:
             idx =  np.nanargmax(list(self.metrics[metric_name].values()))
 
-        return self.parent_suggestions[idx]
+        return self.parent_suggestions[idx+1]
 
 
 def eval_model_manually(model, metric: str, Metrics) -> float:
