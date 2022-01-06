@@ -71,8 +71,8 @@ class OptimizePipeline(object):
             child_algorithm: str = "bayes",
             parent_val_metric: str = "mse",
             child_val_metric: str = "mse",
-            parent_cross_validator: str = None,
-            child_cross_validator: str = None,
+            cv_parent_hpo: bool = None,
+            cv_child_hpo: bool = None,
             monitor: Union[list, str] = "r2",
             mode: str = "regression",
             **model_kws
@@ -134,11 +134,11 @@ class OptimizePipeline(object):
             child_val_metric:
                 Validation metric to calculate val_score in child objective function
             parent_cross_validator:
-                cross validator to be used in parent objective function. If None,
-                then val_score will be calculated on validation data
-            child_cross_validator:
-                cross validator to be used in child objective function. If None,
-                then val_score will be caclulated on validation data
+                Whether we want to apply cross validation in parent hpo loop or not?.
+            cv_child_hpo:
+                Whether we want to apply cross validation in child hpo loop or not?.
+                If False, then val_score will be caclulated on validation data.
+                The type of cross validator used is taken from model.config['cross_validator']
             monitor:
                 Nmaes of performance metrics to monitor in parent hpo loop
             mode:
@@ -157,8 +157,8 @@ class OptimizePipeline(object):
         self.child_algo = child_algorithm
         self.parent_val_metric = parent_val_metric
         self.child_val_metric = child_val_metric
-        self.parent_cv = parent_cross_validator
-        self.child_cv = child_cross_validator
+        self.parent_cv = cv_parent_hpo
+        self.child_cv = cv_child_hpo
         self.mode = mode
         self.model_kwargs = model_kws
         self.out_to_transform = outputs_to_transform
@@ -172,7 +172,6 @@ class OptimizePipeline(object):
         self.metrics = {metric: OrderedDict() for metric in monitor}
 
         self.parent_suggestions = OrderedDict()
-        self.suggested_models = OrderedDict()
 
         self.parent_prefix = f"pipeline_opt_{dateandtime_now()}"
 
@@ -239,7 +238,10 @@ class OptimizePipeline(object):
     @property
     def output_features(self):
         if 'output_features' in self.model_kwargs:
-            return self.model_kwargs['output_features']
+            _output_features = self.model_kwargs['output_features']
+            if isinstance(_output_features, str):
+                _output_features = [_output_features]
+            return _output_features
         else:
             raise ValueError
 
@@ -413,13 +415,6 @@ class OptimizePipeline(object):
             y_transformations=y_transformations or None
         )
 
-        self.parent_suggestions[self.parent_iter_] = {
-            # 'seed': self.seed,
-            'x_transformation': x_transformations,
-            'y_transformation': y_transformations,
-            'estimator_paras': opt_paras
-        }
-
         # fit the model with optimized hyperparameters and suggested transformations
         model = Model(
             model={suggestions["estimator"]: opt_paras},
@@ -432,15 +427,21 @@ class OptimizePipeline(object):
             **self.model_kwargs
         )
 
-        self.suggested_models[self.parent_iter_] = {'path': model.path, 'name': suggestions['estimator']}
+        self.parent_suggestions[self.parent_iter_] = {
+            # 'seed': self.seed,
+            'x_transformation': x_transformations,
+            'y_transformation': y_transformations,
+            'model': {suggestions['estimator']: opt_paras},
+            'path': model.path
 
-        if self.parent_cv is None:  # train the model and evaluate it to calculate val_score
+        }
+
+        if self.parent_cv:  # train the model and evaluate it to calculate val_score
+            val_score = model.cross_val_score(data=self.data)
+        else:  # val_score will be obtained by performing cross validation
             # train the model
             model.fit(data=self.data)
-
             val_score = eval_model_manually(model, self.parent_val_metric, self.Metrics)
-        else:  # val_score will be obtained by performing cross validation
-            val_score = model.cross_val_score(data=self.data)
 
         # calculate all additional performance metrics which are being monitored
         t, p = model.predict(data='validation', return_true=True, process_results=False)
@@ -468,7 +469,7 @@ class OptimizePipeline(object):
     ) -> dict:
         """optimizes hyperparameters of an estimator"""
 
-        CHILD_PREFIX = f"{self.child_iter_}_{dateandtime_now()}"
+        CHILD_PREFIX = f"{self.parent_iter_}_{dateandtime_now()}"
 
         def child_objective(**suggestions):
             """objective function for optimization of estimator parameters"""
@@ -487,12 +488,12 @@ class OptimizePipeline(object):
                 **self.model_kwargs
             )
 
-            if self.child_cv is None:
+            if self.child_cv:
+                val_score = model.cross_val_score(data=self.data)
+            else:
                 # fit child model
                 model.fit(data=self.data)
                 val_score = eval_model_manually(model, self.child_val_metric, self.Metrics)
-            else:
-                val_score = model.cross_val_score(data=self.data)
 
             # populate all child val scores
             self.child_val_metrics[self.parent_iter_-1, self.child_iter_-1] = val_score
