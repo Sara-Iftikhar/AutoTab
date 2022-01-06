@@ -533,9 +533,9 @@ class OptimizePipeline(object):
                              f"metrics are {self.metrics.keys()}")
 
         if MATRIC_TYPES[metric_name] == "min":
-            return np.nanmin(list(self.metrics[metric_name].values()))
+            return np.nanmin(list(self.metrics[metric_name].values())).item()
         else:
-            return np.nanmax(list(self.metrics[metric_name].values()))
+            return np.nanmax(list(self.metrics[metric_name].values())).item()
 
     def get_best_pipeline_by_metric(
             self,
