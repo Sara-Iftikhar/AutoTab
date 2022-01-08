@@ -23,9 +23,10 @@ inputs = ['tide_cm', 'wat_temp_c', 'sal_psu',
 data = arg_beach(inputs=inputs)
 
 
-def run_basic(parent_algorithm="random", child_algorithm="random",
+def build_basic(parent_algorithm="random", child_algorithm="random",
               parent_iterations=4, child_iterations=4,
               parent_val_metric="mse", child_val_metric="mse",
+                models = None,
               **kwargs
               ):
 
@@ -38,11 +39,11 @@ def run_basic(parent_algorithm="random", child_algorithm="random",
         parent_val_metric=parent_val_metric,
         child_val_metric=child_val_metric,
         monitor=['r2', 'nse'],
-        models=[
+        models=models or [
             "LinearRegression",
             "LassoLars",
             "Lasso",
-            "PoissonRegressor"
+            "RandomForestRegressor"
         ],
         input_features=data.columns.tolist()[0:-1],
         output_features=data.columns.tolist()[-1:],
@@ -52,9 +53,17 @@ def run_basic(parent_algorithm="random", child_algorithm="random",
         **kwargs
     )
 
+
+    return pl
+
+
+def run_basic(**kwargs):
+
+    pl = build_basic(**kwargs)
     results = pl.fit(
         data=data
     )
+
     return pl
 
 
@@ -90,6 +99,13 @@ class TestRegression(unittest.TestCase):
         assert isinstance(best_pl, dict)
         for k in ['x_transformation', 'y_transformation', 'model', 'path']:
             assert k in best_pipeline
+        return
+
+    def test_change_child_iter(self):
+        pl = build_basic(models = ['Lasso', 'RandomForestRegressor'])
+        pl.change_child_iteration({"RandomForestRegressor": 10})
+        pl.fit(data=data)
+        assert pl.child_val_metrics_.shape[1] == 10
         return
 
     def test_y_transformations(self):

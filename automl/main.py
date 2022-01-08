@@ -52,6 +52,9 @@ class OptimizePipeline(object):
     - optimizer
         an instance of ai4water.hyperopt.HyperOpt for parent optimization
 
+    - models
+        a list of models being considered for optimization
+
     Note
     -----
     This optimizationa always sovlves a minimization problem even if the val_metric
@@ -63,7 +66,7 @@ class OptimizePipeline(object):
             inputs_to_transform,
             input_transformations: Union[list, dict] = None,
             outputs_to_transform=None,
-            output_transformations: Union[list, dict] = None,
+            output_transformations: Union[list, ] = None,
             models: list = None,
             parent_iterations: int = 100,
             child_iterations: int = 25,
@@ -120,7 +123,7 @@ class OptimizePipeline(object):
                     - `sqrt`
                     - `log2`
             models:
-                The models to consider during optimzatino.
+                The models to consider during optimzation.
             parent_iterations:
                 Number of iterations for parent optimization loop
             child_iterations:
@@ -153,6 +156,8 @@ class OptimizePipeline(object):
         self.models = models
         self.parent_iters = parent_iterations
         self.child_iters = child_iterations
+        # for internal use, we keep child_iter for each estimator
+        self._child_iters = {model:child_iterations for model in self.models}
         self.parent_algo = parent_algorithm
         self.child_algo = child_algorithm
         self.parent_val_metric = parent_val_metric
@@ -174,9 +179,6 @@ class OptimizePipeline(object):
         self.parent_suggestions = OrderedDict()
 
         self.parent_prefix = f"pipeline_opt_{dateandtime_now()}"
-
-        self.child_val_metrics = np.full((self.parent_iters, self.child_iters),
-                                         np.nan)
 
         if self.mode == "regression":
             self.estimator_space = regression_space(num_samples=10)
@@ -245,6 +247,63 @@ class OptimizePipeline(object):
         else:
             raise ValueError
 
+    def add_model(
+            self,
+            model:dict
+    )->None:
+        """adds a mdoel which will be considered during optimization.
+        This function can also be used to change configuration of already existing
+        model.
+
+        Example
+            >>> pl = OptimizePipeline(...)
+            >>> pl.add_model({"XGBRegressor": {"n_estimators": [100, 200,300, 400, 500]}})
+
+        Arguments:
+            model:
+                a dictionary of length 1 whose value should also be a dictionary
+                of parameter space for that model
+        """
+        raise NotImplementedError
+
+    def remove_model(self, model:str)->None:
+        """removes a model from being considered.
+
+        Example
+            >>> pl = OptimizePipeline(...)
+            >>> pl.remove_model("ExtraTreeRegressor")
+        Arguments:
+            model:
+                name of mdoel to be removed.
+        """
+        raise NotImplementedError
+
+    def change_child_iteration(self, model:dict):
+        """You may want to change the child hpo iterations for one or more models.
+        For example we may want to run only 10 iterations for LinearRegression but 40
+        iterations for XGBRegressor. In such a canse we can use this function to
+        modify child hpo iterations for one or more models. The iterations for all
+        the remaining models will remain same as defined by the user at the start.
+
+        Example
+            >>> pl = OptimizePipeline(...)
+            >>> pl.change_child_iteration({"XGBRegressor": 10})
+
+            If we want to change iterations for more than one estimators
+            >>> pl.change_child_iteration(({"XGBRegressor": 30,
+            >>>                             "RandomForestRegressor": 20}))
+
+        Arguments:
+            model
+                a dictionary whose keys are names of models and values are number
+                of iterations for that model during child hpo
+        """
+        for model, _iter in model.items():
+            if model not in self._child_iters:
+                raise ValueError(f"{model} is not a valid model name")
+            self._child_iters[model] = _iter
+        return
+
     def space(self) -> list:
         """makes the parameter space for parent hpo"""
 
@@ -296,11 +355,19 @@ class OptimizePipeline(object):
 
         return sp
 
+    @property
+    def max_child_iters(self):
+        return max(self._child_iters.values())
+
     def reset(self):
 
         self.parent_iter_ = 0
         self.child_iter_ = 0
         self.val_scores_ = OrderedDict()
+
+        # each row indicates parent iteration, column indicates child iteration
+        self.child_val_metrics_ = np.full((self.parent_iters, self.max_child_iters),
+                                         np.nan)
 
         return
 
@@ -358,8 +425,8 @@ class OptimizePipeline(object):
 
         # save results of child iterations as csv file
         fpath = os.path.join(self.path, "child_iters.csv")
-        pd.DataFrame(self.child_val_metrics,
-                     columns=[f'iter_{i}' for i in range(self.child_iters)]).to_csv(fpath)
+        pd.DataFrame(self.child_val_metrics_,
+                     columns=[f'iter_{i}' for i in range(self.max_child_iters)]).to_csv(fpath)
         return res
 
     def parent_objective(
@@ -462,7 +529,8 @@ class OptimizePipeline(object):
         return val_score
 
     def optimize_estimator_paras(
-            self, estimator: str,
+            self,
+            estimator: str,
             x_transformations: list,
             y_transformations: list
     ) -> dict:
@@ -495,7 +563,7 @@ class OptimizePipeline(object):
                 val_score = eval_model_manually(model, self.child_val_metric, self.Metrics)
 
             # populate all child val scores
-            self.child_val_metrics[self.parent_iter_-1, self.child_iter_-1] = val_score
+            self.child_val_metrics_[self.parent_iter_-1, self.child_iter_-1] = val_score
 
             return val_score
 
@@ -506,7 +574,7 @@ class OptimizePipeline(object):
         optimizer = HyperOpt(
             self.child_algo,
             objective_fn=child_objective,
-            num_iterations=self.child_iters,
+            num_iterations=self._child_iters[estimator],
             param_space=child_space,
             verbosity=0,
             process_results=False,
