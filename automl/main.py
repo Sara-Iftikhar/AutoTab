@@ -63,7 +63,7 @@ class OptimizePipeline(object):
             inputs_to_transform,
             input_transformations: Union[list, dict] = None,
             outputs_to_transform=None,
-            output_transformations: Union[list] = None,
+            output_transformations: Union[list, dict] = None,
             models: list = None,
             parent_iterations: int = 100,
             child_iterations: int = 25,
@@ -523,7 +523,7 @@ class OptimizePipeline(object):
 
     def get_best_metric(
             self,
-            metric_name:str
+            metric_name: str
     )->float:
         """returns the best value of a particular performance metric.
         The metric must be recorded i.e. must be given as `monitor` argument.
@@ -537,13 +537,17 @@ class OptimizePipeline(object):
         else:
             return np.nanmax(list(self.metrics[metric_name].values())).item()
 
-    def get_best_pipeline_by_metric(
+    def get_best_metric_iteration(
             self,
-            metric_name:str
-    )->dict:
-        """returns the best pipeline with respect to a particular performance
-        metric. The metric must be recorded i.e. must be given as `monitor`
-        argument."""
+            metric_name: str
+    )->int:
+        """returns iteration of the best value of a particular performance metric.
+
+        Arguments:
+            metric_name:
+                The metric must be recorded i.e. must be given as `monitor` argument.
+        """
+
         if metric_name not in self.metrics:
             raise ValueError(f"{metric_name} is not a valid metric. Available "
                              f"metrics are {self.metrics.keys()}")
@@ -553,7 +557,72 @@ class OptimizePipeline(object):
         else:
             idx =  np.nanargmax(list(self.metrics[metric_name].values()))
 
-        return self.parent_suggestions[idx+1]
+        return int(idx+1)
+
+    def get_best_pipeline_by_metric(
+            self,
+            metric_name:str
+    )->dict:
+        """returns the best pipeline with respect to a particular performance
+        metric.
+
+        Arguments:
+            metric_name:
+                The name of metric whose best value is to be retrieved. The metric
+                must be recorded i.e. must be given as `monitor`.
+        Returns:
+            a dictionary with follwoing keys
+
+                - `path` path where the model is saved on disk
+                - `model` name of model
+                - x_transfromations
+                - y_transformations
+        """
+
+        idx = self.get_best_metric_iteration(metric_name)
+
+        return self.parent_suggestions[idx]
+
+    def get_best_pipeline_by_model(
+            self,
+            model_name:str,
+            metric_name:str
+    )->dict:
+        """returns the best pipeline with respect to a particular model and
+        performance metric. The metric must be recorded i.e. must be given as
+        `monitor` argument.
+
+        Arguments:
+            model_name:
+                The name of model for which best pipeline is to be found. The `best`
+                is defined by `metric_name`.
+            metric_name:
+                The name of metric with respect to which the best model is to
+                be retrieved.
+        Returns:
+            a dictionary
+        """
+
+        if metric_name not in self.metrics:
+            raise ValueError(f"{metric_name} is not a valid metric. Available "
+                             f"metrics are {self.metrics.keys()}")
+
+        model_container = {}
+
+        for iter_num, iter_suggestions in self.parent_suggestions.items():
+                model = iter_suggestions['model']
+                if model_name in model:
+                    print(model_name)
+                    metric_val = self.metrics[metric_name][iter_num]
+                    metric_val = round(metric_val, 4)
+
+                    model_container[metric_val] = iter_suggestions
+
+        container_items = model_container.items()
+
+        sorted_container = sorted(container_items)
+
+        return sorted_container[-1]
 
 
 def eval_model_manually(model, metric: str, Metrics) -> float:

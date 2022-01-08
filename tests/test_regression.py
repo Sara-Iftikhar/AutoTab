@@ -71,8 +71,25 @@ class TestMetrics(unittest.TestCase):
 class TestRegression(unittest.TestCase):
 
     def test_basic(self):
-        run_basic()
+        pl = run_basic()
 
+        itr = pl.get_best_metric_iteration('nse')
+        assert isinstance(itr, int)
+
+        nse = pl.get_best_metric('nse')
+        assert isinstance(nse, float)
+
+        best_pipeline = pl.get_best_pipeline_by_metric('nse')
+        assert isinstance(best_pipeline, dict)
+        for k in ['x_transformation', 'y_transformation', 'model', 'path']:
+            assert k in best_pipeline
+
+        best_nse, best_pl = pl.get_best_pipeline_by_model("LinearRegression", 'nse')
+        assert isinstance(best_nse, float)
+
+        assert isinstance(best_pl, dict)
+        for k in ['x_transformation', 'y_transformation', 'model', 'path']:
+            assert k in best_pipeline
         return
 
     def test_y_transformations(self):
@@ -86,7 +103,6 @@ class TestRegression(unittest.TestCase):
         y_transformation = pl.parent_suggestions[1]['y_transformation'][0]['method']
         assert y_transformation in output_transformations
         return
-
 
 
 if __name__ == "__main__":
