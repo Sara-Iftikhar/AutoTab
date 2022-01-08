@@ -14,6 +14,7 @@ import pandas as pd
 from ai4water import Model
 from ai4water._optimize import make_space
 from ai4water.hyperopt import Categorical, HyperOpt, Integer
+from ai4water.hyperopt.utils import to_skopt_space
 from ai4water.experiments.utils import regression_space, classification_space
 from ai4water.utils.utils import dateandtime_now
 from ai4water.postprocessing.SeqMetrics import RegressionMetrics, ClassificationMetrics
@@ -54,6 +55,9 @@ class OptimizePipeline(object):
 
     - models
         a list of models being considered for optimization
+
+    - estimator_space
+        a dictionary which contains parameter space for each model
 
     Note
     -----
@@ -153,7 +157,15 @@ class OptimizePipeline(object):
         self.inp_to_transform = inputs_to_transform
         self.x_transformations = input_transformations
         self.y_transformations = output_transformations or DEFAULT_Y_TRANFORMATIONS
+
+        self.mode = mode
         self.models = models
+        if models is None:
+            if mode == "regression":
+                self.models = list(regression_space(2).keys())
+            else:
+                self.models = list(classification_space(2).keys())
+
         self.parent_iters = parent_iterations
         self.child_iters = child_iterations
         # for internal use, we keep child_iter for each estimator
@@ -164,7 +176,6 @@ class OptimizePipeline(object):
         self.child_val_metric = child_val_metric
         self.parent_cv = cv_parent_hpo
         self.child_cv = cv_child_hpo
-        self.mode = mode
         self.model_kwargs = model_kws
         self.out_to_transform = outputs_to_transform
 
@@ -181,9 +192,15 @@ class OptimizePipeline(object):
         self.parent_prefix = f"pipeline_opt_{dateandtime_now()}"
 
         if self.mode == "regression":
-            self.estimator_space = regression_space(num_samples=10)
+            space = regression_space(num_samples=10)
         else:
-            self.estimator_space = classification_space(num_samples=10)
+            space = classification_space(num_samples=10)
+
+        # estimator_space contains just those models which are being considered
+        self.estimator_space = {}
+        for mod, mod_sp in space.items():
+            if mod in self.models:
+                self.estimator_space[mod] = mod_sp
 
     @property
     def out_to_transform(self):
@@ -202,19 +219,6 @@ class OptimizePipeline(object):
     @property
     def path(self):
         return os.path.join(os.getcwd(), "results", self.parent_prefix)
-
-    @property
-    def models(self):
-        return self._models
-
-    @models.setter
-    def models(self, x):
-        if x is None:
-            if self.mode == "regression":
-                x = list(regression_space(2).keys())
-            else:
-                x = list(classification_space(2).keys())
-        self._models = x
 
     @property
     def mode(self):
@@ -247,13 +251,34 @@ class OptimizePipeline(object):
         else:
             raise ValueError
 
+    def update_model_space(self, space:dict)->None:
+        """updates or changes the space of an already existing model
+
+        Arguments:
+            space
+                a dictionary whose keys are names of models and values are parameter
+                space for that model.
+        Returns:
+            None
+
+        Example:
+            >>> pl = OptimizePipeline(...)
+            >>> rf_space = {'max_depth': [5,10, 15, 20],
+            >>>          'n_estimators': [5,10, 15, 20]}
+            >>> pl.update_model_space({"RandomForestRegressor": rf_space})
+        """
+        for model, space in space.items():
+            if model not in self.estimator_space:
+                raise ValueError(f"{model} is not valid because it is not being considered.")
+            space = to_skopt_space(space)
+            self.estimator_space[model] = {'param_space': [s for s in space]}
+        return
+
     def add_model(
             self,
             model:dict
     )->None:
-        """adds a mdoel which will be considered during optimization.
-        This function can also be used to change configuration of already existing
-        model.
+        """adds a new model which will be considered during optimization.
 
         Example
             >>> pl = OptimizePipeline(...)
@@ -264,19 +289,41 @@ class OptimizePipeline(object):
                 a dictionary of length 1 whose value should also be a dictionary
                 of parameter space for that model
         """
-        raise NotImplementedError
+        msg = """{} is already present. If you want to change its space, please consider" \
+              using 'change_model_space' function.
+              """
+        for model_name, model_space in model.items():
+            assert model_name not in self.estimator_space, msg.format(model_name)
+            assert model_name not in self.models, msg.format(model_name)
+            assert model_name not in self._child_iters, msg.format(model_name)
 
-    def remove_model(self, model:str)->None:
+            model_space = to_skopt_space(model_space)
+            self.estimator_space[model_name] = {'param_space': model_space}
+            self.models.append(model_name)
+            self._child_iters[model_name] = self.child_iters
+
+        return
+
+    def remove_model(self, models:Union[str, list])->None:
         """removes a model from being considered.
 
         Example
             >>> pl = OptimizePipeline(...)
             >>> pl.remove_model("ExtraTreeRegressor")
+
         Arguments:
-            model:
-                name of mdoel to be removed.
+            models:
+                name or names of model to be removed.
         """
-        raise NotImplementedError
+        if isinstance(models, str):
+            models = [models]
+
+        for model in models:
+            self.models.remove(model)
+            self.estimator_space.pop(model)
+            self._child_iters.pop(model)
+
+        return
 
     def change_child_iteration(self, model:dict):
         """You may want to change the child hpo iterations for one or more models.

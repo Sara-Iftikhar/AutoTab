@@ -102,10 +102,30 @@ class TestRegression(unittest.TestCase):
         return
 
     def test_change_child_iter(self):
+        """check that we can change the hpo iterations for a model"""
         pl = build_basic(models = ['Lasso', 'RandomForestRegressor'])
         pl.change_child_iteration({"RandomForestRegressor": 10})
         pl.fit(data=data)
         assert pl.child_val_metrics_.shape[1] == 10
+        return
+
+    def test_remove_model(self):
+        """test that we can remove a model which is already being considered"""
+        pl = build_basic()
+        pl.remove_model("LinearRegression")
+        assert "LinearRegression" not in pl.models
+        assert "LinearRegression" not in pl._child_iters
+        assert "LinearRegression" not in pl.estimator_space
+        return
+
+    def test_change_model_space(self):
+        """test that we can change space of a model"""
+        pl = build_basic(models = ['Lasso', 'RandomForestRegressor'])
+        space = {'max_depth': [5,10, 15, 20],
+                 'n_estimators': [5,10, 15, 20]}
+        pl.update_model_space({"RandomForestRegressor": space})
+        pl.fit(data=data)
+        assert len(pl.estimator_space['RandomForestRegressor']['param_space'])==2
         return
 
     def test_y_transformations(self):
