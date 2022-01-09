@@ -128,6 +128,17 @@ class TestRegression(unittest.TestCase):
         assert len(pl.estimator_space['RandomForestRegressor']['param_space'])==2
         return
 
+    def test_baseline_results(self):
+        pl = build_basic()
+        val_scores, metrics = pl.baseline_results(data=data)
+        assert isinstance(val_scores, dict)
+        assert len(val_scores) == 4
+        assert isinstance(metrics, dict)
+        assert len(metrics) == 4
+        for k,v in metrics.items():
+            assert len(v) == 2
+        return
+
     def test_y_transformations(self):
         output_transformations = ['sqrt', 'log', 'log10']
         pl = run_basic(parent_algorithm="bayes",

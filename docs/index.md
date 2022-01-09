@@ -14,5 +14,7 @@
             - get_best_metric_iteration
             - get_best_pipeline_by_metric
             - get_best_pipeline_by_model
+            - baseline_results
+            - dumbbell_plot
     rendering:
         show_root_heading: true

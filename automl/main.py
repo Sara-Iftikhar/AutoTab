@@ -11,6 +11,8 @@ from collections import OrderedDict
 import numpy as np
 import pandas as pd
 
+import matplotlib.lines as mlines
+
 from ai4water import Model
 from ai4water._optimize import make_space
 from ai4water.hyperopt import Categorical, HyperOpt, Integer
@@ -566,10 +568,15 @@ class OptimizePipeline(object):
         self.val_scores_[self.parent_iter_] = val_score
 
         # print the merics being monitored
-        formatter = "{:<5} {:<18.3f} " + "{:<15.7f} " * (len(self.metrics))
+        first_5 = np.nanmin(self.child_val_metrics_[self.parent_iter_ - 1, 0:10])
+        first_10 = np.nanmin(self.child_val_metrics_[self.parent_iter_ - 1, 0:15])
+
+        formatter = "{:<5} {:<18.3f} {:<18.3f} {:<18.3f} " + "{:<15.7f} " * (len(self.metrics))
         print(formatter.format(
             self.parent_iter_,
             val_score,
+            first_5,
+            first_10,
             *[v[self.parent_iter_] for v in self.metrics.values()])
         )
 
@@ -738,6 +745,74 @@ class OptimizePipeline(object):
         sorted_container = sorted(container_items)
 
         return sorted_container[-1]
+
+    def baseline_results(self, data=None)->tuple:
+        """Runs all the models with their default parameters and without
+        any x and y transformation. These results can be considered as
+        baseline results and can be compared with optimized model's results.
+
+        Arguments:
+            data
+                If given, will override data given during .fit call.
+
+        Returns:
+            a tuple of two dictionaries. First dictionary is val_scores on test
+            for each model and second dictionary is metrics being monitored for
+            each model on test data.
+        """
+        val_scores = {}
+        metrics = {}
+
+        for estimator in self.models:
+            # build model
+            model = Model(
+                model=estimator,
+                verbosity=0,
+                val_metric=self.parent_val_metric,
+                # seed=self.seed,
+                prefix=f"{self.parent_prefix}{SEP}baselines",
+                **self.model_kwargs
+            )
+
+            if data is None:
+                data = self.data
+            model.fit(data=data)
+
+            t,p = model.predict(return_true=True)
+            errors = self.Metrics(t,p)
+            val_scores[estimator] = getattr(errors, self.parent_val_metric)()
+
+            _metrics = {}
+            for m in self.metrics.keys():
+                _metrics[m] = getattr(errors, m)()
+            metrics[estimator] = _metrics
+
+        return val_scores, metrics
+
+    def dumbbell_plot(
+            self,
+            metric_name:str,
+            fig_size:tuple=None,
+            save:bool=True
+    ):
+        """Generate Dumbbell plot as comparison of baseline models with
+        optimized models.
+
+        Arguments:
+            metric_name
+                The name of metric with respect to which the models have
+                to be compared.
+            fig_size
+                If given, plot will be generated of this size.
+            save
+                By default True. If False, function will not save the
+                resultant plot in current working directory.
+
+        Returns:
+            matplotlib Axes
+        """
+
+        raise NotImplementedError
 
 
 def eval_model_manually(model, metric: str, Metrics) -> float:
