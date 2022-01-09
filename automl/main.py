@@ -10,8 +10,7 @@ from collections import OrderedDict
 
 import numpy as np
 import pandas as pd
-
-import matplotlib.lines as mlines
+import matplotlib.pyplot as plt
 
 from ai4water import Model
 from ai4water._optimize import make_space
@@ -34,11 +33,11 @@ DEFAULT_Y_TRANFORMATIONS = ["log", "log2", "log10", "sqrt", "none"]
 
 class OptimizePipeline(object):
     """
-    optimizes model/estimator to use, its hyperparameters and preprocessing
-    operation to be performed on features. It consists of two hpo loops. The
-    parent or outer loop optimizes preprocessing/feature engineering, feature
-    selection and model selection while the child hpo loop optimizes hyperparmeters
-    of child hpo loop.
+    optimizes model/estimator, its hyperparameters and preprocessing
+    operation to be performed on input and output features. It consists of two
+    hpo loops. The parent or outer loop optimizes preprocessing/feature engineering,
+    feature selection and model selection while the child hpo loop optimizes
+    hyperparmeters of child hpo loop.
 
     Attributes
     -----------
@@ -60,6 +59,17 @@ class OptimizePipeline(object):
 
     - estimator_space
         a dictionary which contains parameter space for each model
+
+    Example:
+        >>> from automl import OptimizePipeline
+        >>> from ai4water.datasets import arg_beach
+        >>> data = arg_beach()
+        >>> input_features = data.columns.tolist()[0:-1]
+        >>> output_features = data.columns.tolist()[-1:]
+        >>> pl = OptimizePipeline(input_features=input_features,
+        >>>                       output_features=output_features,
+        >>>                       inputs_to_transform=input_features)
+        >>> results = pl.fit(data=data)
 
     Note
     -----
@@ -282,7 +292,7 @@ class OptimizePipeline(object):
     )->None:
         """adds a new model which will be considered during optimization.
 
-        Example
+        Example:
             >>> pl = OptimizePipeline(...)
             >>> pl.add_model({"XGBRegressor": {"n_estimators": [100, 200,300, 400, 500]}})
 
@@ -309,7 +319,7 @@ class OptimizePipeline(object):
     def remove_model(self, models:Union[str, list])->None:
         """removes a model from being considered.
 
-        Example
+        Example:
             >>> pl = OptimizePipeline(...)
             >>> pl.remove_model("ExtraTreeRegressor")
 
@@ -334,7 +344,7 @@ class OptimizePipeline(object):
         modify child hpo iterations for one or more models. The iterations for all
         the remaining models will remain same as defined by the user at the start.
 
-        Example
+        Example:
             >>> pl = OptimizePipeline(...)
             >>> pl.change_child_iteration({"XGBRegressor": 10})
 
@@ -793,8 +803,9 @@ class OptimizePipeline(object):
             self,
             metric_name:str,
             fig_size:tuple=None,
+            show: bool = True,
             save:bool=True
-    ):
+    )->plt.Axes:
         """Generate Dumbbell plot as comparison of baseline models with
         optimized models.
 
@@ -804,6 +815,8 @@ class OptimizePipeline(object):
                 to be compared.
             fig_size
                 If given, plot will be generated of this size.
+            show:
+
             save
                 By default True. If False, function will not save the
                 resultant plot in current working directory.
@@ -812,6 +825,32 @@ class OptimizePipeline(object):
             matplotlib Axes
         """
 
+        raise NotImplementedError
+
+    def taylor_plot(
+            self,
+            plot_bias: bool = True,
+            figsize: tuple = None,
+            show: bool = True,
+            save: bool = True,
+            **kwargs
+    ):
+        """makes taylor plot using the best version of each model.
+        The number of models in taylor plot will be equal to the number
+        of models which have been considered by the model.
+
+        Arguments:
+            plot_bias:
+
+            figsize:
+
+            show:
+
+            save:
+
+            kwargs:
+                any additional keyword arguments for taylor_plot function of ai4water.
+        """
         raise NotImplementedError
 
 
