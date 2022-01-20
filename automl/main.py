@@ -1,4 +1,5 @@
 
+import time
 import site
 site.addsitedir('E:\\AA\\AI4Water')
 
@@ -63,8 +64,8 @@ class OptimizePipeline(object):
 
     Example:
         >>> from automl import OptimizePipeline
-        >>> from ai4water.datasets import arg_beach
-        >>> data = arg_beach()
+        >>> from ai4water.datasets import busan_beach
+        >>> data = busan_beach()
         >>> input_features = data.columns.tolist()[0:-1]
         >>> output_features = data.columns.tolist()[-1:]
         >>> pl = OptimizePipeline(input_features=input_features,
@@ -189,6 +190,10 @@ class OptimizePipeline(object):
         self.child_val_metric = child_val_metric
         self.parent_cv = cv_parent_hpo
         self.child_cv = cv_child_hpo
+
+        for arg in ['model', 'x_transformation', 'y_transformation']:
+            if arg in model_kws:
+                raise ValueError(f"argument {arg} not allowed")
         self.model_kwargs = model_kws
         self.out_to_transform = outputs_to_transform
 
@@ -428,7 +433,7 @@ class OptimizePipeline(object):
         # each row indicates parent iteration, column indicates child iteration
         self.child_val_metrics_ = np.full((self.parent_iters, self.max_child_iters),
                                          np.nan)
-
+        self.start_time_ = time.asctime()
         return
 
     def fit(
@@ -473,20 +478,10 @@ class OptimizePipeline(object):
 
         setattr(self, 'optimizer', parent_opt)
 
-        # make a 2d array of all erros being monitored.
-        errors = np.column_stack([list(v.values()) for v in self.metrics.values()])
-        # add val_scores as new columns
-        errors = np.column_stack([errors, list(self.val_scores_.values())])
-        # save the errors being monitored
-        fpath = os.path.join(self.path, "errors.csv")
-        pd.DataFrame(errors,
-                     columns=list(self.metrics.keys()) + ['val_scores']
-                     ).to_csv(fpath)
+        self.save_results()
 
-        # save results of child iterations as csv file
-        fpath = os.path.join(self.path, "child_iters.csv")
-        pd.DataFrame(self.child_val_metrics_,
-                     columns=[f'iter_{i}' for i in range(self.max_child_iters)]).to_csv(fpath)
+        self.report()
+
         return res
 
     def parent_objective(
@@ -668,7 +663,7 @@ class OptimizePipeline(object):
     def get_best_metric_iteration(
             self,
             metric_name: str
-    )->int:
+    ) -> int:
         """returns iteration of the best value of a particular performance metric.
 
         Arguments:
@@ -678,14 +673,14 @@ class OptimizePipeline(object):
 
         if metric_name not in self.metrics:
             raise ValueError(f"{metric_name} is not a valid metric. Available "
-                             f"metrics are {self.metrics.keys()}")
+                             f"metrics are {list(self.metrics.keys())}")
 
         if MATRIC_TYPES[metric_name] == "min":
-            idx =  np.nanargmin(list(self.metrics[metric_name].values()))
+            idx = np.nanargmin(list(self.metrics[metric_name].values()))
         else:
-            idx =  np.nanargmax(list(self.metrics[metric_name].values()))
+            idx = np.nanargmax(list(self.metrics[metric_name].values()))
 
-        return int(idx+1)
+        return int(idx + 1)
 
     def get_best_pipeline_by_metric(
             self,
@@ -894,6 +889,64 @@ class OptimizePipeline(object):
                 any additional keyword arguments for taylor_plot function of ai4water.
         """
         raise NotImplementedError
+
+    def save_results(self):
+        """saves the results. It is called automatically at the end of optimization."""
+        self.end_time_ = time.asctime()
+
+        # make a 2d array of all erros being monitored.
+        errors = np.column_stack([list(v.values()) for v in self.metrics.values()])
+        # add val_scores as new columns
+        errors = np.column_stack([errors, list(self.val_scores_.values())])
+        # save the errors being monitored
+        fpath = os.path.join(self.path, "errors.csv")
+        pd.DataFrame(errors,
+                     columns=list(self.metrics.keys()) + ['val_scores']
+                     ).to_csv(fpath)
+
+        # save results of child iterations as csv file
+        fpath = os.path.join(self.path, "child_iters.csv")
+        pd.DataFrame(self.child_val_metrics_,
+                     columns=[f'iter_{i}' for i in range(self.max_child_iters)]).to_csv(fpath)
+        return
+
+    def metric_report(self, metric_name:str)->str:
+        """report with respect to one performance metric"""
+        metric_val_ = self.get_best_metric(metric_name)
+        best_model_name = list(self.get_best_pipeline_by_metric(metric_name)['model'].keys())[0]
+
+        rep = f"""
+        With respect to {metric_name},
+        the best model was {best_model_name} which had 
+        '{metric_name}' value of {round(metric_val_, 4)}. This model was obtained at 
+        {self.get_best_metric_iteration(metric_name)} iteration and is saved at 
+        {self.get_best_pipeline_by_metric(metric_name)['path']}
+        """
+        return rep
+
+    def report(
+            self,
+            write: bool = True
+    )->str:
+        """makes the reprot and writes it in text form"""
+        st_time = self.start_time_
+        en_time = self.end_time_
+
+        num_models = len(self.models)
+        text = f"""
+        The optization started at {st_time} and ended at {en_time} after 
+        completing {self.parent_iter_} iterations. The optimization considered {num_models} models. 
+        """
+
+        for metric in self.metrics.keys():
+            text += self.metric_report(metric)
+
+        if write:
+            rep_fpath = os.path.join(self.path, "report.txt")
+            with open(rep_fpath, "w") as fp:
+                fp.write(text)
+
+        return text
 
 
 def eval_model_manually(model, metric: str, Metrics) -> float:
