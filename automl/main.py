@@ -431,9 +431,23 @@ class OptimizePipeline(object):
         self.val_scores_ = OrderedDict()
 
         # each row indicates parent iteration, column indicates child iteration
-        self.child_val_metrics_ = np.full((self.parent_iters, self.max_child_iters),
+        self.child_val_scores_ = np.full((self.parent_iters,
+                                          self.max_child_iters),
                                          np.nan)
         self.start_time_ = time.asctime()
+
+        self._print_header()
+        return
+
+    def _print_header(self):
+        # prints the first line on console
+        formatter = "{:<5} {:<18} " + "{:<15} " * (len(self.metrics))
+        print(formatter.format(
+            "Iter",
+            self.parent_val_metric,
+            *[k for k in self.metrics.keys()])
+        )
+
         return
 
     def fit(
@@ -467,13 +481,6 @@ class OptimizePipeline(object):
         if previous_results is not None:
             parent_opt.add_previous_results(previous_results)
 
-        formatter = "{:<5} {:<18} " + "{:<15} " * (len(self.metrics))
-        print(formatter.format(
-            "Iter",
-            self.parent_val_metric,
-            *[k for k in self.metrics.keys()])
-        )
-
         res = parent_opt.fit()
 
         setattr(self, 'optimizer', parent_opt)
@@ -502,67 +509,33 @@ class OptimizePipeline(object):
 
         # self.seed = np.random.randint(0, 10000, 1).item()
 
-        # container for transformations for all features
-        x_transformations = []
-        y_transformations = []
-
-        for feature, method in suggestions.items():
-
-            if feature in self.data:
-                if method == "none":  # don't do anything with this feature
-                    pass
-                else:
-                    # get the relevant transformation for this feature
-                    t = {"method": method, "features": [feature]}
-
-                    # some preprocessing is required for log based transformations
-                    if method.startswith("log"):
-                        t["treat_negatives"] = True
-                        t["replace_zeros"] = True
-                    elif method == "box-cox":
-                        t["treat_negatives"] = True
-                        t["replace_zeros"] = True
-                    elif method == "sqrt":
-                        t['treat_negatives'] = True
-
-                    if feature in self.input_features:
-                        x_transformations.append(t)
-                    else:
-                        y_transformations.append(t)
+        x_trnas, y_trans = self._cook_transformations(suggestions)
 
         # optimize the hyperparas of estimator using child objective
         opt_paras = self.optimize_estimator_paras(
             suggestions['estimator'],
-            x_transformations=x_transformations,
-            y_transformations=y_transformations or None
+            x_transformations=x_trnas,
+            y_transformations=y_trans or None
         )
 
         # fit the model with optimized hyperparameters and suggested transformations
-        model = Model(
+        model = self._build_model(
             model={suggestions["estimator"]: opt_paras},
             val_metric=self.parent_val_metric,
-            verbosity=0,
-            # seed=self.seed,
-            x_transformation=x_transformations,
-            y_transformation=y_transformations,
+            x_transformation=x_trnas,
+            y_transformation=y_trans,
             prefix=self.parent_prefix,
-            **self.model_kwargs
         )
 
         self.parent_suggestions[self.parent_iter_] = {
             # 'seed': self.seed,
-            'x_transformation': x_transformations,
-            'y_transformation': y_transformations,
+            'x_transformation': x_trnas,
+            'y_transformation': y_trans,
             'model': {suggestions['estimator']: opt_paras},
             'path': model.path
         }
 
-        if self.parent_cv:  # train the model and evaluate it to calculate val_score
-            val_score = model.cross_val_score(data=self.data)
-        else:  # val_score will be obtained by performing cross validation
-            # train the model
-            model.fit(data=self.data)
-            val_score = eval_model_manually(model, self.parent_val_metric, self.Metrics)
+        val_score = self._fit_and_eval(model, self.parent_cv, self.parent_val_metric)
 
         # calculate all additional performance metrics which are being monitored
         t, p = model.predict(data='validation', return_true=True, process_results=False)
@@ -599,26 +572,18 @@ class OptimizePipeline(object):
             self.child_iter_ += 1
 
             # build child model
-            model = Model(
+            model = self._build_model(
                 model={estimator: suggestions},
-                verbosity=0,
                 val_metric=self.child_val_metric,
                 x_transformation=x_transformations,
                 y_transformation=y_transformations,
-                # seed=self.seed,
                 prefix=f"{self.parent_prefix}{SEP}{CHILD_PREFIX}",
-                **self.model_kwargs
             )
 
-            if self.child_cv:
-                val_score = model.cross_val_score(data=self.data)
-            else:
-                # fit child model
-                model.fit(data=self.data)
-                val_score = eval_model_manually(model, self.child_val_metric, self.Metrics)
+            val_score = self._fit_and_eval(model, self.child_cv, self.child_val_metric)
 
             # populate all child val scores
-            self.child_val_metrics_[self.parent_iter_-1, self.child_iter_-1] = val_score
+            self.child_val_scores_[self.parent_iter_-1, self.child_iter_-1] = val_score
 
             return val_score
 
@@ -643,6 +608,73 @@ class OptimizePipeline(object):
 
         # return the optimized parameters
         return optimizer.best_paras()
+
+    def _cook_transformations(self, suggestions):
+        """prepares the transformation keyword argument based upon
+        suggestions"""
+
+        # container for transformations for all features
+        x_transformations = []
+        y_transformations = []
+
+        for feature, method in suggestions.items():
+
+            if feature in self.data:
+                if method == "none":  # don't do anything with this feature
+                    pass
+                else:
+                    # get the relevant transformation for this feature
+                    t = {"method": method, "features": [feature]}
+
+                    # some preprocessing is required for log based transformations
+                    if method.startswith("log"):
+                        t["treat_negatives"] = True
+                        t["replace_zeros"] = True
+                    elif method == "box-cox":
+                        t["treat_negatives"] = True
+                        t["replace_zeros"] = True
+                    elif method == "sqrt":
+                        t['treat_negatives'] = True
+
+                    if feature in self.input_features:
+                        x_transformations.append(t)
+                    else:
+                        y_transformations.append(t)
+
+        return x_transformations, y_transformations
+
+    def _build_model(
+            self,
+            model:dict,
+            val_metric:str,
+            x_transformation,
+            y_transformation,
+            prefix:str
+    )->"Model":
+        """build the ai4water Model"""
+        model = Model(
+            model=model,
+            verbosity=0,
+            val_metric=val_metric,
+            x_transformation=x_transformation,
+            y_transformation=y_transformation,
+            # seed=self.seed,
+            prefix=prefix,
+            **self.model_kwargs
+        )
+        return model
+
+    def _fit_and_eval(self, model, cross_validate, metric_to_compute)->float:
+        """fits the model and evaluates it and returns the score"""
+        if cross_validate:
+            # val_score will be obtained by performing cross validation
+            val_score = model.cross_val_score(data=self.data)
+        else:
+            # train the model and evaluate it to calculate val_score
+            model.fit(data=self.data)
+            val_score = eval_model_manually(model, metric_to_compute, self.Metrics)
+
+        return val_score
 
     def get_best_metric(
             self,
@@ -891,7 +923,8 @@ class OptimizePipeline(object):
         raise NotImplementedError
 
     def save_results(self):
-        """saves the results. It is called automatically at the end of optimization."""
+        """saves the results. It is called automatically at the end of optimization.
+        """
         self.end_time_ = time.asctime()
 
         # make a 2d array of all erros being monitored.
@@ -905,9 +938,10 @@ class OptimizePipeline(object):
                      ).to_csv(fpath)
 
         # save results of child iterations as csv file
-        fpath = os.path.join(self.path, "child_iters.csv")
-        pd.DataFrame(self.child_val_metrics_,
-                     columns=[f'iter_{i}' for i in range(self.max_child_iters)]).to_csv(fpath)
+        fpath = os.path.join(self.path, "child_val_scores.csv")
+        pd.DataFrame(
+            self.child_val_scores_,
+            columns=[f'child_iter_{i}' for i in range(self.max_child_iters)]).to_csv(fpath)
         return
 
     def metric_report(self, metric_name:str)->str:
@@ -930,7 +964,7 @@ class OptimizePipeline(object):
     )->str:
         """makes the reprot and writes it in text form"""
         st_time = self.start_time_
-        en_time = self.end_time_
+        en_time = getattr(self, "end_time_", time.asctime())
 
         num_models = len(self.models)
         text = f"""

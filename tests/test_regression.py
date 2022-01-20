@@ -2,7 +2,7 @@ import unittest
 import site
 import warnings
 
-site.addsitedir(r"E:\AA\automl")
+site.addsitedir(r"E:\AA\AI4Water")
 
 def warn(*args, **kwargs):
     pass
@@ -106,7 +106,7 @@ class TestRegression(unittest.TestCase):
         pl = build_basic(models = ['Lasso', 'RandomForestRegressor'])
         pl.change_child_iteration({"RandomForestRegressor": 10})
         pl.fit(data=data)
-        assert pl.child_val_metrics_.shape[1] == 10
+        assert pl.child_val_scores_.shape[1] == 10
         return
 
     def test_remove_model(self):
