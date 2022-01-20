@@ -6,11 +6,12 @@ import os
 import gc
 import math
 from typing import Union, Dict
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.lines as mlines
 
 from ai4water import Model
 from ai4water._optimize import make_space
@@ -578,15 +579,10 @@ class OptimizePipeline(object):
         self.val_scores_[self.parent_iter_] = val_score
 
         # print the merics being monitored
-        first_5 = np.nanmin(self.child_val_metrics_[self.parent_iter_ - 1, 0:10])
-        first_10 = np.nanmin(self.child_val_metrics_[self.parent_iter_ - 1, 0:15])
-
-        formatter = "{:<5} {:<18.3f} {:<18.3f} {:<18.3f} " + "{:<15.7f} " * (len(self.metrics))
+        formatter = "{:<5} {:<18.3f} " + "{:<15.7f} " * (len(self.metrics))
         print(formatter.format(
             self.parent_iter_,
             val_score,
-            first_5,
-            first_10,
             *[v[self.parent_iter_] for v in self.metrics.values()])
         )
 
@@ -719,7 +715,7 @@ class OptimizePipeline(object):
             self,
             model_name:str,
             metric_name:str
-    )->dict:
+    )->tuple:
         """returns the best pipeline with respect to a particular model and
         performance metric. The metric must be recorded i.e. must be given as
         `monitor` argument.
@@ -732,7 +728,15 @@ class OptimizePipeline(object):
                 The name of metric with respect to which the best model is to
                 be retrieved.
         Returns:
-            a dictionary
+            a tuple of length two
+
+            - first value is a float which represents the value of
+            metric
+            - second value is a dictionary of pipeline with four keys
+                x_transformation
+                y_transformation
+                model
+                path
         """
 
         if metric_name not in self.metrics:
@@ -750,6 +754,9 @@ class OptimizePipeline(object):
 
                     model_container[metric_val] = iter_suggestions
 
+        if len(model_container)==0:
+            raise ModelNotUsedError(model_name)
+
         container_items = model_container.items()
 
         sorted_container = sorted(container_items)
@@ -766,9 +773,9 @@ class OptimizePipeline(object):
                 If given, will override data given during .fit call.
 
         Returns:
-            a tuple of two dictionaries. First dictionary is val_scores on test
-            for each model and second dictionary is metrics being monitored for
-            each model on test data.
+            a tuple of two dictionaries.
+            - a dictionary of val_scores on test data for each model
+            - a dictionary of metrics being monitored for  each model on test data.
         """
         val_scores = {}
         metrics = {}
@@ -802,9 +809,9 @@ class OptimizePipeline(object):
     def dumbbell_plot(
             self,
             metric_name:str,
-            fig_size:tuple=None,
+            figsize:tuple=None,
             show: bool = True,
-            save:bool=True
+            save:bool = True
     )->plt.Axes:
         """Generate Dumbbell plot as comparison of baseline models with
         optimized models.
@@ -813,7 +820,7 @@ class OptimizePipeline(object):
             metric_name
                 The name of metric with respect to which the models have
                 to be compared.
-            fig_size
+            figsize
                 If given, plot will be generated of this size.
             show:
 
@@ -825,7 +832,42 @@ class OptimizePipeline(object):
             matplotlib Axes
         """
 
-        raise NotImplementedError
+        _, bl_results = self.baseline_results()
+
+        bl_models = {}
+        for k,v in bl_results.items():
+            bl_models[k] = v[metric_name]
+
+        optimized_models = {}
+
+        for model_name in self.models:
+            try:
+                metric_val, _ = self.get_best_pipeline_by_model(model_name, metric_name)
+            # the model was not used so consider the baseline result as optimzied
+            # result
+            except ModelNotUsedError:
+                metric_val = bl_models[model_name]
+
+            optimized_models[model_name] = metric_val
+
+        combined = defaultdict(list)
+        for d in (bl_models, optimized_models):
+            for key, value in d.items():
+                combined[key].append(value)
+
+        df = pd.DataFrame.from_dict(combined).transpose()
+        df = df.reset_index()
+        df.columns = ['models', 'baseline', 'optimized']
+
+        ax = dumbbell_plot(df, figsize=figsize)
+
+        fpath = os.path.join(os.getcwd(), "results", self.parent_prefix, "dumbell")
+        if save:
+            plt.savefig(fpath, fpi=300)
+        if show:
+            plt.show()
+
+        return ax
 
     def taylor_plot(
             self,
@@ -873,3 +915,51 @@ def eval_model_manually(model, metric: str, Metrics) -> float:
         val_score = 1.0
 
     return val_score
+
+def dumbbell_plot(df:pd.DataFrame, figsize:tuple=None):
+    df.sort_values('optimized', inplace=True)
+    df.reset_index(inplace=True)
+
+    # Func to draw line segment
+    def newline(p1, p2, color='black'):
+        ax = plt.gca()
+        l = mlines.Line2D([p1[0], p2[0]], [p1[1], p2[1]], color='skyblue')
+        ax.add_line(l)
+        return l
+
+    if figsize is None:
+        figsize = (14,14)
+    # Figure and Axes
+    fig, ax = plt.subplots(1, 1, figsize=figsize, facecolor='#f7f7f7', dpi=80)
+
+    # Vertical Lines
+    ax.vlines(x=.05, ymin=0, ymax=26, color='black', alpha=1, linewidth=1, linestyles='dotted')
+    ax.vlines(x=.10, ymin=0, ymax=26, color='black', alpha=1, linewidth=1, linestyles='dotted')
+    ax.vlines(x=.15, ymin=0, ymax=26, color='black', alpha=1, linewidth=1, linestyles='dotted')
+    ax.vlines(x=.20, ymin=0, ymax=26, color='black', alpha=1, linewidth=1, linestyles='dotted')
+
+    # Points
+    ax.scatter(y=df['index'], x=df['baseline'], s=50, color='#0e668b', alpha=0.7)
+    ax.scatter(y=df['index'], x=df['optimized'], s=50, color='#a3c4dc', alpha=0.7)
+
+    # Line Segments
+    for i, p1, p2 in zip(df['index'], df['optimized'], df['baseline']):
+        newline([p1, i], [p2, i])
+
+    # Decoration
+    ax.set_facecolor('#f7f7f7')
+    ax.set_title("Dumbell Chart: Pct Change - 2013 vs 2014", fontdict={'size': 22})
+    ax.set(xlim=(0, .25), ylim=(-1, 27), ylabel='Mean GDP Per Capita')
+    ax.set_xticks([.05, .1, .15, .20])
+    ax.set_xticklabels(['5%', '15%', '20%', '25%'])
+    ax.set_xticklabels(['5%', '15%', '20%', '25%'])
+
+    return ax
+
+
+class ModelNotUsedError(Exception):
+    def __init__(self, model_name):
+        self.model = model_name
+
+    def __str__(self):
+        return f"""model {self.model} is not used during optimization"""

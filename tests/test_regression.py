@@ -4,23 +4,23 @@ import warnings
 
 site.addsitedir(r"E:\AA\automl")
 
-
 def warn(*args, **kwargs):
     pass
 
-
 warnings.warn = warn
 
-from automl import OptimizePipeline
+import matplotlib.pyplot as plt
 
-from ai4water.datasets import arg_beach
+from ai4water.datasets import busan_beach
+
+from automl import OptimizePipeline
 
 
 inputs = ['tide_cm', 'wat_temp_c', 'sal_psu',
           'pcp3_mm',  # 'pcp6_mm', 'pcp12_mm',
           'pcp_mm', 'air_temp_c', 'rel_hum']
 
-data = arg_beach(inputs=inputs)
+data = busan_beach(inputs=inputs)
 
 
 def build_basic(parent_algorithm="random", child_algorithm="random",
@@ -137,6 +137,12 @@ class TestRegression(unittest.TestCase):
         assert len(metrics) == 4
         for k,v in metrics.items():
             assert len(v) == 2
+        return
+
+    def test_dumbbell_plot(self):
+        pl = run_basic(parent_iterations=7)
+        ax = pl.dumbbell_plot('r2', show=False)
+        assert isinstance(ax, plt.Axes)
         return
 
     def test_y_transformations(self):
