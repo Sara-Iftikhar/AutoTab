@@ -441,7 +441,7 @@ class OptimizePipeline(object):
         return sp
 
     @property
-    def max_child_iters(self):
+    def max_child_iters(self)->int:
         return max(self._child_iters.values())
 
     def reset(self):
@@ -477,13 +477,17 @@ class OptimizePipeline(object):
     ) -> "ai4water.hyperopt.HyperOpt":
         """
 
-        Arguments:
-            data:
+        Parameters
+        ----------
+            data :
                 A pandas dataframe
-            previous_results:
+            previous_results : dict, optional
                 path of file which contains xy values.
-        Returns:
-            an instance of ai4water.hyperopt.HyperOpt class which is used for optimization.
+
+        Returns
+        --------
+            an instance of ai4water.hyperopt.HyperOpt class which is used for
+            optimization.
         """
 
         self.data = data
@@ -1041,6 +1045,16 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         config['data'] = data_config
         return config
 
+    def _init_paras(self):
+        """Returns the initializing parameters of this class"""
+        signature = inspect.signature(self.__init__)
+
+        init_paras = {}
+        for para in signature.parameters.values():
+            init_paras[para.name] = getattr(self, para.name)
+
+        return init_paras
+
     def config(self)->dict:
         """
         Returns a dictionary which contains all the information about the class
@@ -1051,25 +1065,30 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             a dictionary with two keys `init_paras` and `runtime_paras`.
 
         """
-        signature = inspect.signature(self.__init__)
-
-        init_paras = {}
-        for para in signature.parameters.values():
-            init_paras[para.name] = getattr(self, para.name)
-
-        return {
-            'init_paras': init_paras,
+        _config = {
+            'init_paras': self._init_paras(),
             'runtime_attrs': self._runtime_attrs()
         }
+        return _config
 
     @classmethod
     def from_config_file(cls, config_file:str)->"OptimizePipeline":
-        """Builds the class from config file."""
+        """Builds the class from config file.
+
+        Parameters
+        ----------
+            config_file : str
+                complete path of config file which has .json extension
+
+        Returns
+        -------
+            an instance of OptimizePipeline class
+        """
 
         if not os.path.isfile(config_file):
             raise ValueError(f"""
-            config_file must be complete path of config file but it is \n{config_file}
-            of type {type(config_file)}
+            config_file must be complete path of config file but it is 
+            {config_file} of type {type(config_file)}
             """)
 
         with open(config_file, 'r') as fp:
@@ -1079,8 +1098,102 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
     @classmethod
     def from_config(cls, config:dict)->"OptimizePipeline":
-        """Builds the class from config dictionary"""
+        """Builds the class from config dictionary
+
+        Parameters
+        ----------
+            config : dict
+                a dictionary which contains `init_paras` key.
+
+        Returns
+        -------
+            an instance of OptimizePipeline class
+        """
         return cls(**config['init_paras'])
+
+    def be_best_model_from_config(
+            self,
+            metric_name:str,
+            model_name:str = None
+    ):
+        """Build and Evaluate the best model with respect to metric from config.
+
+        Parameters
+        ----------
+            metric_name : str
+                the metric with respect to which the best model is fetched
+                and then built/evaluated
+            model_name : str, optional
+                If given, the best version of this model will be fetched and built.
+                The 'best' will be decided based upon `metric_name`
+
+        Returns
+        -------
+            an instance of trained ai4water Model
+        """
+        if model_name:
+            pipeline = self.get_best_pipeline_by_model(model_name, metric_name)
+        else:
+            pipeline = self.get_best_pipeline_by_metric(metric_name=metric_name)
+
+        cpath = os.path.join(pipeline['path'], "config.json")
+        model = Model.from_config_file(cpath)
+
+        wpath = os.path.join(pipeline['path'], "weights", list(pipeline['model'].keys())[0])
+        model.update_weights(wpath)
+
+        # should we not train on training+validation now?
+        model.fit(data=self.data)
+
+        model.predict(data='training', metrics="all")
+        model.predict(data='validation', metrics="all")
+        model.predict(data='test', metrics="all")
+
+        return model
+
+    def bfe_best_model_from_scratch(
+            self,
+            metric_name:str,
+            model_name:str = None
+    ):
+        """Builds, Trains and Evaluates the best model with respect to metric from
+        scratch.
+
+        Parameters
+        ----------
+            metric_name : str
+                the metric with respect to which the best model is searched
+                and then built/trained/evaluated
+            model_name : str, optional
+                If given, the best version of this model will be found and built.
+                The 'best' will be decided based upon `metric_name`
+
+        Returns
+        -------
+            an instance of trained ai4water Model
+        """
+        if model_name:
+            pipeline = self.get_best_pipeline_by_model(model_name, metric_name)
+        else:
+            pipeline = self.get_best_pipeline_by_metric(metric_name=metric_name)
+
+        model_name = model_name or ''
+        prefix = f"{self.path}{SEP}results_from_scratch{SEP}{metric_name}_{model_name}"
+        model = self._build_model(model=pipeline['model'],
+                                  x_transformation=pipeline['x_transformation'],
+                                  y_transformation=pipeline['y_transformation'],
+                                  prefix=prefix,
+                                  val_metric=self.parent_val_metric)
+
+        # should we not train on training+validation now?
+        model.fit(data=self.data)
+
+        model.predict(data='training', metrics="all")
+        model.predict(data='validation', metrics="all")
+        model.predict(data='test', metrics="all")
+
+        return model
+
 
 def eval_model_manually(model, metric: str, Metrics) -> float:
     """evaluates the model"""
