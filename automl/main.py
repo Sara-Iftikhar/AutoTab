@@ -1,11 +1,13 @@
-import json
-import time
+
 import site
 site.addsitedir('E:\\AA\\AI4Water')
 
 import os
 import gc
+import json
+import time
 import math
+import inspect
 from typing import Union
 from collections import OrderedDict, defaultdict
 
@@ -16,12 +18,12 @@ from easy_mpl import dumbbell_plot
 
 from ai4water import Model
 from ai4water._optimize import make_space
-from ai4water.hyperopt import Categorical, HyperOpt, Integer
-from ai4water.hyperopt.utils import to_skopt_space
-from ai4water.experiments.utils import regression_space, classification_space
-from ai4water.utils.utils import dateandtime_now
-from ai4water.postprocessing.SeqMetrics import RegressionMetrics, ClassificationMetrics
 from ai4water.utils.utils import MATRIC_TYPES
+from ai4water.hyperopt.utils import to_skopt_space
+from ai4water.utils.utils import dateandtime_now, jsonize
+from ai4water.hyperopt import Categorical, HyperOpt, Integer
+from ai4water.experiments.utils import regression_space, classification_space
+from ai4water.postprocessing.SeqMetrics import RegressionMetrics, ClassificationMetrics
 
 
 SEP = os.sep
@@ -62,7 +64,8 @@ class OptimizePipeline(object):
     - estimator_space
         a dictionary which contains parameter space for each model
 
-    Example:
+    Example
+    -------
         >>> from automl import OptimizePipeline
         >>> from ai4water.datasets import busan_beach
         >>> data = busan_beach()
@@ -96,16 +99,17 @@ class OptimizePipeline(object):
             cv_child_hpo: bool = None,
             monitor: Union[list, str] = "r2",
             mode: str = "regression",
-            **model_kws
+            **model_kwargs
     ):
         """
-        initializes
+        initializes the class
 
-        Arguments:
-            inputs_to_transform:
+        Parameters
+        ----------
+            inputs_to_transform : list
                 Input features on which feature engineering/transformation is to
                 be applied. By default all input features are considered.
-            input_transformations:
+            input_transformations : list, dict
                 The transformations to be considered for input features. Default is None,
                 in which case all input features are considered.
 
@@ -129,10 +133,10 @@ class OptimizePipeline(object):
                 each input feature. In such a case, this argument must be a dictionary
                 whose keys are names of input features and values are list of transformations.
 
-            outputs_to_transform:
+            outputs_to_transform :
                 Output features on which feature engineering/transformation is to
                 be applied. If None, then transformations on outputs are not applied.
-            output_transformations:
+            output_transformations :
                 The transformations to be considered for outputs/targets. By default
                 following transformations are considered for outputs
 
@@ -140,37 +144,37 @@ class OptimizePipeline(object):
                     - `log10`
                     - `sqrt`
                     - `log2`
-            models:
+            models : list
                 The models to consider during optimzation.
-            parent_iterations:
+            parent_iterations : int
                 Number of iterations for parent optimization loop
-            child_iterations:
+            child_iterations : int
                 Number of iterations for child optimization loop
-            parent_algorithm:
+            parent_algorithm : str
                 Algorithm for optimization of parent optimzation
-            child_algorithm:
+            child_algorithm : str
                 Algorithm for optimization of child optimization
-            parent_val_metric:
+            parent_val_metric : str
                 Validation metric to calculate val_score in parent objective function
-            child_val_metric:
+            child_val_metric : str
                 Validation metric to calculate val_score in child objective function
-            parent_cross_validator:
+            parent_cross_validator :
                 Whether we want to apply cross validation in parent hpo loop or not?.
-            cv_child_hpo:
+            cv_child_hpo :
                 Whether we want to apply cross validation in child hpo loop or not?.
                 If False, then val_score will be caclulated on validation data.
                 The type of cross validator used is taken from model.config['cross_validator']
-            monitor:
+            monitor :
                 Nmaes of performance metrics to monitor in parent hpo loop
-            mode:
+            mode : bool
                 whether this is a `regression` problem or `classification`
-            model_kws:
+            **model_kwargs :
                 any additional key word arguments for ai4water's Model
 
         """
-        self.inp_to_transform = inputs_to_transform
-        self.x_transformations = input_transformations
-        self.y_transformations = output_transformations or DEFAULT_Y_TRANFORMATIONS
+        self.inputs_to_transform = inputs_to_transform
+        self.input_transformations = input_transformations
+        self.output_transformations = output_transformations or DEFAULT_Y_TRANFORMATIONS
 
         self.mode = mode
         self.models = models
@@ -180,25 +184,25 @@ class OptimizePipeline(object):
             else:
                 self.models = list(classification_space(2).keys())
 
-        self.parent_iters = parent_iterations
-        self.child_iters = child_iterations
+        self.parent_iterations = parent_iterations
+        self.child_iterations = child_iterations
         # for internal use, we keep child_iter for each estimator
         self._child_iters = {model:child_iterations for model in self.models}
-        self.parent_algo = parent_algorithm
-        self.child_algo = child_algorithm
+        self.parent_algorithm = parent_algorithm
+        self.child_algorithm = child_algorithm
         self.parent_val_metric = parent_val_metric
         self.child_val_metric = child_val_metric
-        self.parent_cv = cv_parent_hpo
-        self.child_cv = cv_child_hpo
+        self.cv_parent_hpo = cv_parent_hpo
+        self.cv_child_hpo = cv_child_hpo
 
         for arg in ['model', 'x_transformation', 'y_transformation']:
-            if arg in model_kws:
+            if arg in model_kwargs:
                 raise ValueError(f"argument {arg} not allowed")
-        self.model_kwargs = model_kws
-        self.out_to_transform = outputs_to_transform
+        self.model_kwargs = model_kwargs
+        self.outputs_to_transform = outputs_to_transform
 
         # self.seed = None
-
+        self.monitor = monitor
         if isinstance(monitor, str):
             monitor = [monitor]
         assert isinstance(monitor, list)
@@ -220,12 +224,14 @@ class OptimizePipeline(object):
             if mod in self.models:
                 self.estimator_space[mod] = mod_sp
 
+        self._save_config()
+
     @property
-    def out_to_transform(self):
+    def outputs_to_transform(self):
         return self._out_to_transform
 
-    @out_to_transform.setter
-    def out_to_transform(self, x):
+    @outputs_to_transform.setter
+    def outputs_to_transform(self, x):
         if x:
             if isinstance(x, str):
                 x = [x]
@@ -236,7 +242,10 @@ class OptimizePipeline(object):
 
     @property
     def path(self):
-        return os.path.join(os.getcwd(), "results", self.parent_prefix)
+        _path = os.path.join(os.getcwd(), "results", self.parent_prefix)
+        if not os.path.exists(_path):
+            os.makedirs(_path)
+        return _path
 
     @property
     def mode(self):
@@ -268,6 +277,13 @@ class OptimizePipeline(object):
             return _output_features
         else:
             raise ValueError
+
+    def _save_config(self):
+        cpath = os.path.join(self.path, "config.json")
+        config = self.config()
+        with open(cpath, 'w') as fp:
+            json.dump(jsonize(config), fp, indent=4)
+        return
 
     def update_model_space(self, space:dict)->None:
         """updates or changes the space of an already existing model
@@ -307,8 +323,8 @@ class OptimizePipeline(object):
                 a dictionary of length 1 whose value should also be a dictionary
                 of parameter space for that model
         """
-        msg = """{} is already present. If you want to change its space, please consider" \
-              using 'change_model_space' function.
+        msg = """{} is already present. If you want to change its space, please 
+              consider using 'change_model_space' function.
               """
         for model_name, model_space in model.items():
             assert model_name not in self.estimator_space, msg.format(model_name)
@@ -318,7 +334,7 @@ class OptimizePipeline(object):
             model_space = to_skopt_space(model_space)
             self.estimator_space[model_name] = {'param_space': model_space}
             self.models.append(model_name)
-            self._child_iters[model_name] = self.child_iters
+            self._child_iters[model_name] = self.child_iterations
 
         return
 
@@ -350,10 +366,14 @@ class OptimizePipeline(object):
         modify child hpo iterations for one or more models. The iterations for all
         the remaining models will remain same as defined by the user at the start.
 
-        Example:
+        Parameters
+        ----------
+            model : dict
+
+        Example
+        -------
             >>> pl = OptimizePipeline(...)
             >>> pl.change_child_iteration({"XGBRegressor": 10})
-
             If we want to change iterations for more than one estimators
             >>> pl.change_child_iteration(({"XGBRegressor": 30,
             >>>                             "RandomForestRegressor": 20}))
@@ -375,43 +395,43 @@ class OptimizePipeline(object):
         append = {}
         y_categories = []
 
-        if self.x_transformations is None:
+        if self.input_transformations is None:
             x_categories = DEFAULT_TRANSFORMATIONS
-        elif isinstance(self.x_transformations, list):
-            x_categories = self.x_transformations
+        elif isinstance(self.input_transformations, list):
+            x_categories = self.input_transformations
         else:
             x_categories = DEFAULT_TRANSFORMATIONS
-            assert isinstance(self.x_transformations, dict)
+            assert isinstance(self.input_transformations, dict)
 
-            for feature, transformation in self.x_transformations.items():
+            for feature, transformation in self.input_transformations.items():
                 assert isinstance(transformation, list)
                 append[feature] = transformation
 
-        if self.out_to_transform:
+        if self.outputs_to_transform:
             # if the user has provided name of any outupt feature
             # on feature transformation is to be applied
 
-            if isinstance(self.y_transformations, list):
-                assert all([t in DEFAULT_Y_TRANFORMATIONS for t in self.y_transformations]), f"""
+            if isinstance(self.output_transformations, list):
+                assert all([t in DEFAULT_Y_TRANFORMATIONS for t in self.output_transformations]), f"""
                 transformations must be one of {DEFAULT_Y_TRANFORMATIONS}"""
 
                 for out in self.output_features:
-                    append[out] = self.y_transformations
-                y_categories = self.y_transformations
+                    append[out] = self.output_transformations
+                y_categories = self.output_transformations
 
             else:
-                assert isinstance(self.y_transformations, dict)
-                for out_feature, y_transformations in self.y_transformations.items():
+                assert isinstance(self.output_transformations, dict)
+                for out_feature, y_transformations in self.output_transformations.items():
 
                     assert out_feature in self.output_features
                     assert isinstance(y_transformations, list)
                     assert all(
-                        [t in DEFAULT_Y_TRANFORMATIONS for t in self.y_transformations]), f"""
+                        [t in DEFAULT_Y_TRANFORMATIONS for t in self.output_transformations]), f"""
                         transformations must be one of {DEFAULT_Y_TRANFORMATIONS}"""
                     append[out_feature] = y_transformations
-                y_categories = list(self.y_transformations.values())
+                y_categories = list(self.output_transformations.values())
 
-        sp = make_space(self.inp_to_transform + (self.out_to_transform or []),
+        sp = make_space(self.inputs_to_transform + (self.outputs_to_transform or []),
                         categories=set(x_categories + y_categories),
                         append=append)
 
@@ -431,7 +451,7 @@ class OptimizePipeline(object):
         self.val_scores_ = OrderedDict()
 
         # each row indicates parent iteration, column indicates child iteration
-        self.child_val_scores_ = np.full((self.parent_iters,
+        self.child_val_scores_ = np.full((self.parent_iterations,
                                           self.max_child_iters),
                                          np.nan)
         self.start_time_ = time.asctime()
@@ -471,10 +491,10 @@ class OptimizePipeline(object):
         self.reset()
 
         parent_opt = HyperOpt(
-            self.parent_algo,
+            self.parent_algorithm,
             param_space=self.space(),
             objective_fn=self.parent_objective,
-            num_iterations=self.parent_iters,
+            num_iterations=self.parent_iterations,
             opt_path=self.path
         )
 
@@ -488,6 +508,8 @@ class OptimizePipeline(object):
         self.save_results()
 
         self.report()
+
+        self._save_config()
 
         return res
 
@@ -535,7 +557,7 @@ class OptimizePipeline(object):
             'path': model.path
         }
 
-        val_score = self._fit_and_eval(model, self.parent_cv, self.parent_val_metric)
+        val_score = self._fit_and_eval(model, self.cv_parent_hpo, self.parent_val_metric)
 
         # calculate all additional performance metrics which are being monitored
         t, p = model.predict(data='validation', return_true=True, process_results=False)
@@ -580,7 +602,7 @@ class OptimizePipeline(object):
                 prefix=f"{self.parent_prefix}{SEP}{CHILD_PREFIX}",
             )
 
-            val_score = self._fit_and_eval(model, self.child_cv, self.child_val_metric)
+            val_score = self._fit_and_eval(model, self.cv_child_hpo, self.child_val_metric)
 
             # populate all child val scores
             self.child_val_scores_[self.parent_iter_-1, self.child_iter_-1] = val_score
@@ -592,7 +614,7 @@ class OptimizePipeline(object):
         self.child_iter_ = 0  # before starting child hpo, reset iteration counter
 
         optimizer = HyperOpt(
-            self.child_algo,
+            self.child_algorithm,
             objective_fn=child_objective,
             num_iterations=self._child_iters[estimator],
             param_space=child_space,
@@ -649,7 +671,7 @@ class OptimizePipeline(object):
             val_metric:str,
             x_transformation,
             y_transformation,
-            prefix:str
+            prefix: Union[str, None]
     )->"Model":
         """build the ai4water Model"""
         model = Model(
@@ -988,9 +1010,9 @@ the best model was {best_model_name} which had
 completing {self.parent_iter_} iterations. The optimization considered {num_models} models. 
         """
 
-        if self.parent_iter_ < self.parent_iters:
+        if self.parent_iter_ < self.parent_iterations:
             text += f"""
-The given parent iterations were {self.parent_iters} but optimization stopped early"""
+The given parent iterations were {self.parent_iterations} but optimization stopped early"""
 
         for metric in self.metrics.keys():
             text += self.metric_report(metric)
@@ -1002,6 +1024,63 @@ The given parent iterations were {self.parent_iters} but optimization stopped ea
 
         return text
 
+    def _runtime_attrs(self):
+        """These attributes are only set during fit method"""
+        config = {}
+        for attr in ['start_time_', 'end_time_', 'child_iter_', 'parent_iter_']:
+            config[attr] = getattr(self, attr, None)
+
+        data_config = {}
+        if hasattr(self, 'data'):
+            data_config['type'] = self.data.__class__.__name__
+            if isinstance(self.data, pd.DataFrame):
+                data_config['shape'] = self.data.shape
+                data_config['columns'] = self.data.columns
+
+
+        config['data'] = data_config
+        return config
+
+    def config(self)->dict:
+        """
+        Returns a dictionary which contains all the information about the class
+        and from which the class can be created.
+
+        Returns
+        -------
+            a dictionary with two keys `init_paras` and `runtime_paras`.
+
+        """
+        signature = inspect.signature(self.__init__)
+
+        init_paras = {}
+        for para in signature.parameters.values():
+            init_paras[para.name] = getattr(self, para.name)
+
+        return {
+            'init_paras': init_paras,
+            'runtime_attrs': self._runtime_attrs()
+        }
+
+    @classmethod
+    def from_config_file(cls, config_file:str)->"OptimizePipeline":
+        """Builds the class from config file."""
+
+        if not os.path.isfile(config_file):
+            raise ValueError(f"""
+            config_file must be complete path of config file but it is \n{config_file}
+            of type {type(config_file)}
+            """)
+
+        with open(config_file, 'r') as fp:
+            config = json.load(fp)
+
+        return cls(**config['init_paras'])
+
+    @classmethod
+    def from_config(cls, config:dict)->"OptimizePipeline":
+        """Builds the class from config dictionary"""
+        return cls(**config['init_paras'])
 
 def eval_model_manually(model, metric: str, Metrics) -> float:
     """evaluates the model"""
