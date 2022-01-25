@@ -1,4 +1,4 @@
-
+import json
 import time
 import site
 site.addsitedir('E:\\AA\\AI4Water')
@@ -6,13 +6,13 @@ site.addsitedir('E:\\AA\\AI4Water')
 import os
 import gc
 import math
-from typing import Union, Dict
+from typing import Union
 from collections import OrderedDict, defaultdict
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.lines as mlines
+from easy_mpl import dumbbell_plot
 
 from ai4water import Model
 from ai4water._optimize import make_space
@@ -774,8 +774,8 @@ class OptimizePipeline(object):
 
         for iter_num, iter_suggestions in self.parent_suggestions.items():
                 model = iter_suggestions['model']
+
                 if model_name in model:
-                    print(model_name)
                     metric_val = self.metrics[metric_name][iter_num]
                     metric_val = round(metric_val, 4)
 
@@ -809,27 +809,34 @@ class OptimizePipeline(object):
 
         for estimator in self.models:
             # build model
-            model = Model(
+            model = self._build_model(
                 model=estimator,
-                verbosity=0,
                 val_metric=self.parent_val_metric,
-                # seed=self.seed,
                 prefix=f"{self.parent_prefix}{SEP}baselines",
-                **self.model_kwargs
+                x_transformation=None,
+                y_transformation=None
             )
 
             if data is None:
                 data = self.data
             model.fit(data=data)
 
-            t,p = model.predict(return_true=True)
-            errors = self.Metrics(t,p)
+            t, p = model.predict(return_true=True)
+            errors = self.Metrics(t, p)
             val_scores[estimator] = getattr(errors, self.parent_val_metric)()
 
             _metrics = {}
             for m in self.metrics.keys():
                 _metrics[m] = getattr(errors, m)()
             metrics[estimator] = _metrics
+
+        results = {
+            'val_scores': val_scores,
+            'metrics': metrics
+        }
+
+        with open(os.path.join(self.path, "baselines", "results.json"), 'w') as fp:
+            json.dump(results, fp, sort_keys=True, indent=4)
 
         return val_scores, metrics
 
@@ -886,11 +893,19 @@ class OptimizePipeline(object):
         df = df.reset_index()
         df.columns = ['models', 'baseline', 'optimized']
 
-        ax = dumbbell_plot(df, figsize=figsize)
+        fig, ax = plt.subplots(figsize=figsize)
+        ax = dumbbell_plot(df['baseline'],
+                           df['optimized'],
+                           labels=df['models'],
+                           show=False,
+                           xlabel=metric_name,
+                           ylabel="Models",
+                           ax=ax
+                           )
 
-        fpath = os.path.join(os.getcwd(), "results", self.parent_prefix, "dumbell")
+        fpath = os.path.join(self.path, "dumbell")
         if save:
-            plt.savefig(fpath, fpi=300)
+            plt.savefig(fpath, dpi=300)
         if show:
             plt.show()
 
@@ -908,16 +923,17 @@ class OptimizePipeline(object):
         The number of models in taylor plot will be equal to the number
         of models which have been considered by the model.
 
-        Arguments:
-            plot_bias:
+        Parameters
+        ----------
+            plot_bias :
 
-            figsize:
+            figsize :
 
-            show:
+            show :
 
-            save:
+            save :
 
-            kwargs:
+            **kwargs :
                 any additional keyword arguments for taylor_plot function of ai4water.
         """
         raise NotImplementedError
@@ -950,11 +966,11 @@ class OptimizePipeline(object):
         best_model_name = list(self.get_best_pipeline_by_metric(metric_name)['model'].keys())[0]
 
         rep = f"""
-        With respect to {metric_name},
-        the best model was {best_model_name} which had 
-        '{metric_name}' value of {round(metric_val_, 4)}. This model was obtained at 
-        {self.get_best_metric_iteration(metric_name)} iteration and is saved at 
-        {self.get_best_pipeline_by_metric(metric_name)['path']}
+    With respect to {metric_name},
+the best model was {best_model_name} which had 
+'{metric_name}' value of {round(metric_val_, 4)}. This model was obtained at 
+{self.get_best_metric_iteration(metric_name)} iteration and is saved at 
+{self.get_best_pipeline_by_metric(metric_name)['path']}
         """
         return rep
 
@@ -968,9 +984,13 @@ class OptimizePipeline(object):
 
         num_models = len(self.models)
         text = f"""
-        The optization started at {st_time} and ended at {en_time} after 
-        completing {self.parent_iter_} iterations. The optimization considered {num_models} models. 
+    The optization started at {st_time} and ended at {en_time} after 
+completing {self.parent_iter_} iterations. The optimization considered {num_models} models. 
         """
+
+        if self.parent_iter_ < self.parent_iters:
+            text += f"""
+The given parent iterations were {self.parent_iters} but optimization stopped early"""
 
         for metric in self.metrics.keys():
             text += self.metric_report(metric)
@@ -1002,46 +1022,6 @@ def eval_model_manually(model, metric: str, Metrics) -> float:
         val_score = 1.0
 
     return val_score
-
-def dumbbell_plot(df:pd.DataFrame, figsize:tuple=None):
-    df.sort_values('optimized', inplace=True)
-    df.reset_index(inplace=True)
-
-    # Func to draw line segment
-    def newline(p1, p2, color='black'):
-        ax = plt.gca()
-        l = mlines.Line2D([p1[0], p2[0]], [p1[1], p2[1]], color='skyblue')
-        ax.add_line(l)
-        return l
-
-    if figsize is None:
-        figsize = (14,14)
-    # Figure and Axes
-    fig, ax = plt.subplots(1, 1, figsize=figsize, facecolor='#f7f7f7', dpi=80)
-
-    # Vertical Lines
-    ax.vlines(x=.05, ymin=0, ymax=26, color='black', alpha=1, linewidth=1, linestyles='dotted')
-    ax.vlines(x=.10, ymin=0, ymax=26, color='black', alpha=1, linewidth=1, linestyles='dotted')
-    ax.vlines(x=.15, ymin=0, ymax=26, color='black', alpha=1, linewidth=1, linestyles='dotted')
-    ax.vlines(x=.20, ymin=0, ymax=26, color='black', alpha=1, linewidth=1, linestyles='dotted')
-
-    # Points
-    ax.scatter(y=df['index'], x=df['baseline'], s=50, color='#0e668b', alpha=0.7)
-    ax.scatter(y=df['index'], x=df['optimized'], s=50, color='#a3c4dc', alpha=0.7)
-
-    # Line Segments
-    for i, p1, p2 in zip(df['index'], df['optimized'], df['baseline']):
-        newline([p1, i], [p2, i])
-
-    # Decoration
-    ax.set_facecolor('#f7f7f7')
-    ax.set_title("Dumbell Chart: Pct Change - 2013 vs 2014", fontdict={'size': 22})
-    ax.set(xlim=(0, .25), ylim=(-1, 27), ylabel='Mean GDP Per Capita')
-    ax.set_xticks([.05, .1, .15, .20])
-    ax.set_xticklabels(['5%', '15%', '20%', '25%'])
-    ax.set_xticklabels(['5%', '15%', '20%', '25%'])
-
-    return ax
 
 
 class ModelNotUsedError(Exception):
