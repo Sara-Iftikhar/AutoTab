@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 from easy_mpl import dumbbell_plot
 
 from ai4water import Model
+from ai4water.utils import taylor_plot
 from ai4water._optimize import make_space
 from ai4water.utils.utils import MATRIC_TYPES
 from ai4water.hyperopt.utils import to_skopt_space
@@ -226,6 +227,13 @@ class OptimizePipeline(object):
 
         self._save_config()
 
+        # create container to store data for Taylor plot
+        # It will be populated during postprocessing
+        self.taylor_plot_inputs = {
+            'simulations': {"test": {}},
+            'trues': {"test": None}
+        }
+
     @property
     def outputs_to_transform(self):
         return self._out_to_transform
@@ -288,14 +296,17 @@ class OptimizePipeline(object):
     def update_model_space(self, space:dict)->None:
         """updates or changes the space of an already existing model
 
-        Arguments:
+        Parameters
+        ---------
             space
                 a dictionary whose keys are names of models and values are parameter
                 space for that model.
-        Returns:
+        Returns
+        -------
             None
 
-        Example:
+        Example
+        -------
             >>> pl = OptimizePipeline(...)
             >>> rf_space = {'max_depth': [5,10, 15, 20],
             >>>          'n_estimators': [5,10, 15, 20]}
@@ -314,14 +325,17 @@ class OptimizePipeline(object):
     )->None:
         """adds a new model which will be considered during optimization.
 
-        Example:
+        Parameters
+        ----------
+            model : dict
+                a dictionary of length 1 whose value should also be a dictionary
+                of parameter space for that model
+
+        Example
+        -------
             >>> pl = OptimizePipeline(...)
             >>> pl.add_model({"XGBRegressor": {"n_estimators": [100, 200,300, 400, 500]}})
 
-        Arguments:
-            model:
-                a dictionary of length 1 whose value should also be a dictionary
-                of parameter space for that model
         """
         msg = """{} is already present. If you want to change its space, please 
               consider using 'change_model_space' function.
@@ -490,7 +504,7 @@ class OptimizePipeline(object):
             optimization.
         """
 
-        self.data = data
+        self.data_ = data
 
         self.reset()
 
@@ -645,7 +659,7 @@ class OptimizePipeline(object):
 
         for feature, method in suggestions.items():
 
-            if feature in self.data:
+            if feature in self.data_:
                 if method == "none":  # don't do anything with this feature
                     pass
                 else:
@@ -694,10 +708,10 @@ class OptimizePipeline(object):
         """fits the model and evaluates it and returns the score"""
         if cross_validate:
             # val_score will be obtained by performing cross validation
-            val_score = model.cross_val_score(data=self.data)
+            val_score = model.cross_val_score(data=self.data_, refit=True)
         else:
             # train the model and evaluate it to calculate val_score
-            model.fit(data=self.data)
+            model.fit(data=self.data_)
             val_score = eval_model_manually(model, metric_to_compute, self.Metrics)
 
         return val_score
@@ -792,16 +806,22 @@ class OptimizePipeline(object):
                 path
         """
 
+        # checks if the given metric is a valid metric or not
         if metric_name not in self.metrics:
             raise ValueError(f"{metric_name} is not a valid metric. Available "
                              f"metrics are {self.metrics.keys()}")
 
+        # initialize an empty dictionary to store model parameters
         model_container = {}
 
         for iter_num, iter_suggestions in self.parent_suggestions.items():
+            # iter_suggestion is a dictionary and it contains four keys
                 model = iter_suggestions['model']
+                # model is dictionary, whose key is the model_name and values
+                # are model configuration
 
                 if model_name in model:
+                    # find out the metric value at iter_num
                     metric_val = self.metrics[metric_name][iter_num]
                     metric_val = round(metric_val, 4)
 
@@ -810,9 +830,8 @@ class OptimizePipeline(object):
         if len(model_container)==0:
             raise ModelNotUsedError(model_name)
 
-        container_items = model_container.items()
-
-        sorted_container = sorted(container_items)
+        # sorting the container w.r.t given metric_name
+        sorted_container = sorted(model_container.items())
 
         return sorted_container[-1]
 
@@ -844,8 +863,8 @@ class OptimizePipeline(object):
             )
 
             if data is None:
-                data = self.data
-            model.fit(data=data)
+                data = self.data_
+            model.fit_on_all_training_data(data=data)
 
             t, p = model.predict(return_true=True)
             errors = self.Metrics(t, p)
@@ -962,7 +981,25 @@ class OptimizePipeline(object):
             **kwargs :
                 any additional keyword arguments for taylor_plot function of ai4water.
         """
-        raise NotImplementedError
+
+        if self.taylor_plot_inputs['trues']['test'] is None:
+            self.bfe_all_best_models()
+
+        ax = taylor_plot(
+            show=show,
+            plot_bias=plot_bias,
+            cont_kws={},
+            grid_kws={},
+            figsize=figsize,
+            **self.taylor_plot_inputs, # simulations and trues as keyword arguments
+            **kwargs
+        )
+        fname = os.path.join(self.path, "taylor_plot")
+
+        if save:
+            plt.savefig(fname, dpi=300, bbox_inches="tight")
+
+        return ax
 
     def save_results(self):
         """saves the results. It is called automatically at the end of optimization.
@@ -1028,24 +1065,24 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         return text
 
-    def _runtime_attrs(self):
-        """These attributes are only set during fit method"""
+    def _runtime_attrs(self)->dict:
+        """These attributes are only set during call to fit"""
         config = {}
         for attr in ['start_time_', 'end_time_', 'child_iter_', 'parent_iter_']:
             config[attr] = getattr(self, attr, None)
 
         data_config = {}
-        if hasattr(self, 'data'):
-            data_config['type'] = self.data.__class__.__name__
-            if isinstance(self.data, pd.DataFrame):
-                data_config['shape'] = self.data.shape
-                data_config['columns'] = self.data.columns
+        if hasattr(self, 'data_'):
+            data_config['type'] = self.data_.__class__.__name__
+            if isinstance(self.data_, pd.DataFrame):
+                data_config['shape'] = self.data_.shape
+                data_config['columns'] = self.data_.columns
 
 
         config['data'] = data_config
         return config
 
-    def _init_paras(self):
+    def _init_paras(self)->dict:
         """Returns the initializing parameters of this class"""
         signature = inspect.signature(self.__init__)
 
@@ -1132,7 +1169,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             an instance of trained ai4water Model
         """
         if model_name:
-            pipeline = self.get_best_pipeline_by_model(model_name, metric_name)
+            _, pipeline = self.get_best_pipeline_by_model(model_name, metric_name)
         else:
             pipeline = self.get_best_pipeline_by_metric(metric_name=metric_name)
 
@@ -1142,13 +1179,34 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         wpath = os.path.join(pipeline['path'], "weights", list(pipeline['model'].keys())[0])
         model.update_weights(wpath)
 
-        # should we not train on training+validation now?
-        model.fit(data=self.data)
+        self._evaluate_model(model)
 
-        model.predict(data='training', metrics="all")
-        model.predict(data='validation', metrics="all")
-        model.predict(data='test', metrics="all")
+        return model
 
+    def bfe_model_from_scratch(
+            self,
+            iter_num: int,
+    ):
+        """
+        Builds, trains and evalutes the model from a specific iteration
+        Parameters
+        ----------
+            iter_num : int
+                iteration number from which to choose the model
+
+        Returns
+        -------
+            an instance of trained ai4water Model
+        """
+        pipeline = self.parent_suggestions[iter_num]
+        prefix = f"{self.path}{SEP}results_from_scratch{SEP}iteration_{iter_num}"
+
+        model = self._build_and_eval_from_scratch(
+            model=pipeline['model'],
+            x_transformation=pipeline['x_transformation'],
+            y_transformation=pipeline['y_transformation'],
+            prefix=prefix
+        )
         return model
 
     def bfe_best_model_from_scratch(
@@ -1173,27 +1231,120 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             an instance of trained ai4water Model
         """
         if model_name:
-            pipeline = self.get_best_pipeline_by_model(model_name, metric_name)
+            pipeline, met_val = self.get_best_pipeline_by_model(model_name, metric_name)
         else:
+            met_val = self.get_best_metric(metric_name)
             pipeline = self.get_best_pipeline_by_metric(metric_name=metric_name)
 
+        met_val = round(met_val, 3)
+
         model_name = model_name or ''
-        prefix = f"{self.path}{SEP}results_from_scratch{SEP}{metric_name}_{model_name}"
-        model = self._build_model(model=pipeline['model'],
-                                  x_transformation=pipeline['x_transformation'],
-                                  y_transformation=pipeline['y_transformation'],
+        prefix = f"{self.path}{SEP}results_from_scratch{SEP}{metric_name}_{met_val}_{model_name}"
+
+        model = self._build_and_eval_from_scratch(model=pipeline['model'],
+                             x_transformation=pipeline['x_transformation'],
+                             y_transformation=pipeline['y_transformation'],
+                             prefix=prefix)
+
+        return model
+
+    def _build_and_eval_from_scratch(
+            self,
+            model,
+            x_transformation,
+            y_transformation,
+            prefix,
+            model_name=None,
+    ):
+        """builds and evaluates the model from scratch. If model_name is given,
+        model's predictions are saved in 'taylor_plot_inputs' dictionary
+        """
+        model = self._build_model(model=model,
+                                  x_transformation=x_transformation,
+                                  y_transformation=y_transformation,
                                   prefix=prefix,
                                   val_metric=self.parent_val_metric)
 
         # should we not train on training+validation now?
-        model.fit(data=self.data)
+        model.fit_on_all_training_data(data=self.data_)
 
-        model.predict(data='training', metrics="all")
-        model.predict(data='validation', metrics="all")
-        model.predict(data='test', metrics="all")
+        self._evaluate_model(model, model_name=model_name)
 
         return model
 
+    def _evaluate_model(
+            self,
+            model,
+            model_name=None
+    ):
+        """evaluates/makes predictions from model on traiing/validation/test data.
+        if model_name is given, model's predictions are saved in 'taylor_plot_inputs'
+        dictionary
+        """
+        model.predict(data='training', metrics="all")
+        model.predict(data='validation', metrics="all")
+        t, p = model.predict(data='test', metrics="all", return_true=True)
+
+        if model_name:
+            self.taylor_plot_inputs['trues']['test'] = t
+            self.taylor_plot_inputs['simulations']['test'][model_name] = p
+
+        return
+
+    def bfe_all_best_models(
+            self,
+            metric_name: str = None
+    ):
+        """
+        builds, trains and evaluates best versions of all the models
+
+        Parameters
+        ----------
+            metric_name : str
+                the name of metric to determine best version of a model. If not given,
+                parent_val_metric will be used.
+
+        Returns
+        -------
+
+        """
+        met_name = metric_name or self.parent_val_metric
+
+        for model in self.models:
+
+            try:
+                _, pipeline = self.get_best_pipeline_by_model(model, met_name)
+            except ModelNotUsedError:
+                continue
+
+            prefix = f"{self.path}{SEP}results_from_scratch{SEP}{met_name}_{model}"
+
+            _ = self._build_and_eval_from_scratch(
+                model=pipeline['model'],
+                x_transformation=pipeline['x_transformation'],
+                y_transformation=pipeline['y_transformation'],
+                prefix=prefix,
+                model_name=model
+            )
+
+        return
+
+    def post_fit(self):
+        """post processing of results"""
+        self.bfe_all_best_models()
+        self.dumbbell_plot(metric_name=self.parent_val_metric)
+        self.taylor_plot()
+
+        return
+
+    def cleanup(self):
+        """removes the folders from disk"""
+        for _item in os.listdir(self.path):
+            _path = os.path.join(self.path, _item)
+            if os.path.isdir(_path):
+                if _item not in ['results_from_scratch']:
+                    raise NotImplementedError
+        return
 
 def eval_model_manually(model, metric: str, Metrics) -> float:
     """evaluates the model"""
