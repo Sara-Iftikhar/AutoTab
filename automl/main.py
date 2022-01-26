@@ -1016,6 +1016,12 @@ class OptimizePipeline(object):
         if save:
             plt.savefig(fname, dpi=300, bbox_inches="tight")
 
+        sim = self.taylor_plot_inputs['simulations']['test']
+        sim = pd.DataFrame.from_dict(sim)
+        sim['trues'] = self.taylor_plot_inputs['trues']['test']
+
+        sim.to_csv(os.path.join(self.path, "taylor_data.csv"))
+
         return ax
 
     def save_results(self):
