@@ -7,6 +7,7 @@ import gc
 import json
 import time
 import math
+import shutil
 import inspect
 from typing import Union
 from collections import OrderedDict, defaultdict
@@ -147,20 +148,28 @@ class OptimizePipeline(object):
                     - `log2`
             models : list
                 The models to consider during optimzation.
-            parent_iterations : int
+            parent_iterations : int, optional
                 Number of iterations for parent optimization loop
-            child_iterations : int
+            child_iterations : int, optional
                 Number of iterations for child optimization loop
-            parent_algorithm : str
+            parent_algorithm : str, optional
                 Algorithm for optimization of parent optimzation
-            child_algorithm : str
+            child_algorithm : str, optional
                 Algorithm for optimization of child optimization
-            parent_val_metric : str
-                Validation metric to calculate val_score in parent objective function
-            child_val_metric : str
+            parent_val_metric : str, optional
+                Validation metric to calculate val_score in parent objective function.
+                The parent hpo loop optimizes/improves this metric. This metric is
+                calculated on valdation data. If cross validation is performed then
+                this metric is calculated using cross validation.
+            child_val_metric : str, optional
                 Validation metric to calculate val_score in child objective function
-            parent_cross_validator :
+            cv_parent_hpo : bool, optional
                 Whether we want to apply cross validation in parent hpo loop or not?.
+                If given, the parent hpo loop will optimize the cross validation score.
+                The  model is fitted on whole training data (training+validation) after
+                cross validation and the metrics printed (other than parent_val_metric)
+                are calculated on the based the updated model i.e. the one fitted on
+                whole training (trainning+validation) data.
             cv_child_hpo :
                 Whether we want to apply cross validation in child hpo loop or not?.
                 If False, then val_score will be caclulated on validation data.
@@ -188,7 +197,7 @@ class OptimizePipeline(object):
         self.parent_iterations = parent_iterations
         self.child_iterations = child_iterations
         # for internal use, we keep child_iter for each estimator
-        self._child_iters = {model:child_iterations for model in self.models}
+        self._child_iters = {model: child_iterations for model in self.models}
         self.parent_algorithm = parent_algorithm
         self.child_algorithm = child_algorithm
         self.parent_val_metric = parent_val_metric
@@ -293,7 +302,7 @@ class OptimizePipeline(object):
             json.dump(jsonize(config), fp, indent=4)
         return
 
-    def update_model_space(self, space:dict)->None:
+    def update_model_space(self, space: dict) -> None:
         """updates or changes the space of an already existing model
 
         Parameters
@@ -321,8 +330,8 @@ class OptimizePipeline(object):
 
     def add_model(
             self,
-            model:dict
-    )->None:
+            model: dict
+    ) -> None:
         """adds a new model which will be considered during optimization.
 
         Parameters
@@ -352,16 +361,22 @@ class OptimizePipeline(object):
 
         return
 
-    def remove_model(self, models:Union[str, list])->None:
-        """removes a model from being considered.
+    def remove_model(self, models: Union[str, list]) -> None:
+        """removes a model from being considered. The follwoing attributes are
+         updated.
+            - models
+            - estimator_space
+            - _child_iters
 
-        Example:
+        Parameters
+        ----------
+            models : list, str
+                name or names of model to be removed.
+
+        Example
+        -------
             >>> pl = OptimizePipeline(...)
             >>> pl.remove_model("ExtraTreeRegressor")
-
-        Arguments:
-            models:
-                name or names of model to be removed.
         """
         if isinstance(models, str):
             models = [models]
@@ -373,17 +388,19 @@ class OptimizePipeline(object):
 
         return
 
-    def change_child_iteration(self, model:dict):
+    def change_child_iteration(self, model: dict):
         """You may want to change the child hpo iterations for one or more models.
         For example we may want to run only 10 iterations for LinearRegression but 40
         iterations for XGBRegressor. In such a canse we can use this function to
         modify child hpo iterations for one or more models. The iterations for all
         the remaining models will remain same as defined by the user at the start.
+        This method updated `_child_iters` dictionary
 
         Parameters
         ----------
             model : dict
-
+                a dictionary whose keys are names of models and values are number
+                of iterations for that model during child hpo
         Example
         -------
             >>> pl = OptimizePipeline(...)
@@ -391,11 +408,6 @@ class OptimizePipeline(object):
             If we want to change iterations for more than one estimators
             >>> pl.change_child_iteration(({"XGBRegressor": 30,
             >>>                             "RandomForestRegressor": 20}))
-
-        Arguments:
-            model
-                a dictionary whose keys are names of models and values are number
-                of iterations for that model during child hpo
         """
         for model, _iter in model.items():
             if model not in self._child_iters:
@@ -455,11 +467,13 @@ class OptimizePipeline(object):
         return sp
 
     @property
-    def max_child_iters(self)->int:
+    def max_child_iters(self) -> int:
+        # the number of child hpo iterations can be different based upon algorithm
+        # this property calculates maximum child iterations
         return max(self._child_iters.values())
 
     def reset(self):
-
+        # called at the start of fit method
         self.parent_iter_ = 0
         self.child_iter_ = 0
         self.val_scores_ = OrderedDict()
@@ -494,7 +508,7 @@ class OptimizePipeline(object):
         Parameters
         ----------
             data :
-                A pandas dataframe
+                A pandas dataframe which contains input and output features
             previous_results : dict, optional
                 path of file which contains xy values.
 
@@ -685,12 +699,12 @@ class OptimizePipeline(object):
 
     def _build_model(
             self,
-            model:dict,
-            val_metric:str,
+            model: dict,
+            val_metric: str,
             x_transformation,
             y_transformation,
             prefix: Union[str, None]
-    )->"Model":
+    ) -> "Model":
         """build the ai4water Model"""
         model = Model(
             model=model,
@@ -704,7 +718,7 @@ class OptimizePipeline(object):
         )
         return model
 
-    def _fit_and_eval(self, model, cross_validate, metric_to_compute)->float:
+    def _fit_and_eval(self, model, cross_validate, metric_to_compute) -> float:
         """fits the model and evaluates it and returns the score"""
         if cross_validate:
             # val_score will be obtained by performing cross validation
@@ -719,7 +733,7 @@ class OptimizePipeline(object):
     def get_best_metric(
             self,
             metric_name: str
-    )->float:
+    ) -> float:
         """returns the best value of a particular performance metric.
         The metric must be recorded i.e. must be given as `monitor` argument.
         """
@@ -756,8 +770,8 @@ class OptimizePipeline(object):
 
     def get_best_pipeline_by_metric(
             self,
-            metric_name:str
-    )->dict:
+            metric_name: str
+    ) -> dict:
         """returns the best pipeline with respect to a particular performance
         metric.
 
@@ -780,9 +794,9 @@ class OptimizePipeline(object):
 
     def get_best_pipeline_by_model(
             self,
-            model_name:str,
-            metric_name:str
-    )->tuple:
+            model_name: str,
+            metric_name: str
+    ) -> tuple:
         """returns the best pipeline with respect to a particular model and
         performance metric. The metric must be recorded i.e. must be given as
         `monitor` argument.
@@ -816,18 +830,18 @@ class OptimizePipeline(object):
 
         for iter_num, iter_suggestions in self.parent_suggestions.items():
             # iter_suggestion is a dictionary and it contains four keys
-                model = iter_suggestions['model']
-                # model is dictionary, whose key is the model_name and values
-                # are model configuration
+            model = iter_suggestions['model']
+            # model is dictionary, whose key is the model_name and values
+            # are model configuration
 
-                if model_name in model:
-                    # find out the metric value at iter_num
-                    metric_val = self.metrics[metric_name][iter_num]
-                    metric_val = round(metric_val, 4)
+            if model_name in model:
+                # find out the metric value at iter_num
+                metric_val = self.metrics[metric_name][iter_num]
+                metric_val = round(metric_val, 4)
 
-                    model_container[metric_val] = iter_suggestions
+                model_container[metric_val] = iter_suggestions
 
-        if len(model_container)==0:
+        if len(model_container) == 0:
             raise ModelNotUsedError(model_name)
 
         # sorting the container w.r.t given metric_name
@@ -835,10 +849,11 @@ class OptimizePipeline(object):
 
         return sorted_container[-1]
 
-    def baseline_results(self, data=None)->tuple:
+    def baseline_results(self, data=None) -> tuple:
         """Runs all the models with their default parameters and without
         any x and y transformation. These results can be considered as
         baseline results and can be compared with optimized model's results.
+        The model is trained on 'training'+'validation' data.
 
         Arguments:
             data
@@ -887,34 +902,36 @@ class OptimizePipeline(object):
 
     def dumbbell_plot(
             self,
-            metric_name:str,
-            figsize:tuple=None,
+            metric_name: str,
+            figsize: tuple = None,
             show: bool = True,
-            save:bool = True
-    )->plt.Axes:
+            save: bool = True
+    ) -> plt.Axes:
         """Generate Dumbbell plot as comparison of baseline models with
         optimized models.
 
-        Arguments:
-            metric_name
+        Parameters
+        ----------
+            metric_name: str
                 The name of metric with respect to which the models have
                 to be compared.
-            figsize
+            figsize: tuple
                 If given, plot will be generated of this size.
-            show:
-
+            show : bool
+                whether to show the plot or not
             save
                 By default True. If False, function will not save the
                 resultant plot in current working directory.
 
-        Returns:
+        Returns
+        -------
             matplotlib Axes
         """
 
         _, bl_results = self.baseline_results()
 
         bl_models = {}
-        for k,v in bl_results.items():
+        for k, v in bl_results.items():
             bl_models[k] = v[metric_name]
 
         optimized_models = {}
@@ -963,7 +980,7 @@ class OptimizePipeline(object):
             show: bool = True,
             save: bool = True,
             **kwargs
-    ):
+    ) -> plt.Axes:
         """makes taylor plot using the best version of each model.
         The number of models in taylor plot will be equal to the number
         of models which have been considered by the model.
@@ -973,7 +990,7 @@ class OptimizePipeline(object):
             plot_bias :
 
             figsize :
-
+                a tuple determining figure size
             show :
 
             save :
@@ -991,7 +1008,7 @@ class OptimizePipeline(object):
             cont_kws={},
             grid_kws={},
             figsize=figsize,
-            **self.taylor_plot_inputs, # simulations and trues as keyword arguments
+            **self.taylor_plot_inputs,  # simulations and trues as keyword arguments
             **kwargs
         )
         fname = os.path.join(self.path, "taylor_plot")
@@ -1023,7 +1040,7 @@ class OptimizePipeline(object):
             columns=[f'child_iter_{i}' for i in range(self.max_child_iters)]).to_csv(fpath)
         return
 
-    def metric_report(self, metric_name:str)->str:
+    def metric_report(self, metric_name: str) -> str:
         """report with respect to one performance metric"""
         metric_val_ = self.get_best_metric(metric_name)
         best_model_name = list(self.get_best_pipeline_by_metric(metric_name)['model'].keys())[0]
@@ -1040,7 +1057,7 @@ the best model was {best_model_name} which had
     def report(
             self,
             write: bool = True
-    )->str:
+    ) -> str:
         """makes the reprot and writes it in text form"""
         st_time = self.start_time_
         en_time = getattr(self, "end_time_", time.asctime())
@@ -1065,7 +1082,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         return text
 
-    def _runtime_attrs(self)->dict:
+    def _runtime_attrs(self) -> dict:
         """These attributes are only set during call to fit"""
         config = {}
         for attr in ['start_time_', 'end_time_', 'child_iter_', 'parent_iter_']:
@@ -1078,11 +1095,10 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                 data_config['shape'] = self.data_.shape
                 data_config['columns'] = self.data_.columns
 
-
         config['data'] = data_config
         return config
 
-    def _init_paras(self)->dict:
+    def _init_paras(self) -> dict:
         """Returns the initializing parameters of this class"""
         signature = inspect.signature(self.__init__)
 
@@ -1092,7 +1108,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         return init_paras
 
-    def config(self)->dict:
+    def config(self) -> dict:
         """
         Returns a dictionary which contains all the information about the class
         and from which the class can be created.
@@ -1109,7 +1125,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         return _config
 
     @classmethod
-    def from_config_file(cls, config_file:str)->"OptimizePipeline":
+    def from_config_file(cls, config_file: str) -> "OptimizePipeline":
         """Builds the class from config file.
 
         Parameters
@@ -1134,7 +1150,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         return cls(**config['init_paras'])
 
     @classmethod
-    def from_config(cls, config:dict)->"OptimizePipeline":
+    def from_config(cls, config: dict) -> "OptimizePipeline":
         """Builds the class from config dictionary
 
         Parameters
@@ -1150,8 +1166,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
     def be_best_model_from_config(
             self,
-            metric_name:str,
-            model_name:str = None
+            metric_name: str,
+            model_name: str = None
     ):
         """Build and Evaluate the best model with respect to metric from config.
 
@@ -1188,7 +1204,9 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             iter_num: int,
     ):
         """
-        Builds, trains and evalutes the model from a specific iteration
+        Builds, trains and evalutes the model from a specific iteration.
+        The model is trained on 'training'+'validation' data.
+
         Parameters
         ----------
             iter_num : int
@@ -1211,11 +1229,11 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
     def bfe_best_model_from_scratch(
             self,
-            metric_name:str,
-            model_name:str = None
+            metric_name: str,
+            model_name: str = None
     ):
         """Builds, Trains and Evaluates the best model with respect to metric from
-        scratch.
+        scratch. The model is trained on 'training'+'validation' data.
 
         Parameters
         ----------
@@ -1241,10 +1259,11 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         model_name = model_name or ''
         prefix = f"{self.path}{SEP}results_from_scratch{SEP}{metric_name}_{met_val}_{model_name}"
 
-        model = self._build_and_eval_from_scratch(model=pipeline['model'],
-                             x_transformation=pipeline['x_transformation'],
-                             y_transformation=pipeline['y_transformation'],
-                             prefix=prefix)
+        model = self._build_and_eval_from_scratch(
+            model=pipeline['model'],
+            x_transformation=pipeline['x_transformation'],
+            y_transformation=pipeline['y_transformation'],
+            prefix=prefix)
 
         return model
 
@@ -1255,7 +1274,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             y_transformation,
             prefix,
             model_name=None,
-    ):
+    ) -> "Model":
         """builds and evaluates the model from scratch. If model_name is given,
         model's predictions are saved in 'taylor_plot_inputs' dictionary
         """
@@ -1265,7 +1284,6 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                                   prefix=prefix,
                                   val_metric=self.parent_val_metric)
 
-        # should we not train on training+validation now?
         model.fit_on_all_training_data(data=self.data_)
 
         self._evaluate_model(model, model_name=model_name)
@@ -1276,7 +1294,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             self,
             model,
             model_name=None
-    ):
+    ) -> None:
         """evaluates/makes predictions from model on traiing/validation/test data.
         if model_name is given, model's predictions are saved in 'taylor_plot_inputs'
         dictionary
@@ -1294,9 +1312,10 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
     def bfe_all_best_models(
             self,
             metric_name: str = None
-    ):
+    ) -> None:
         """
-        builds, trains and evaluates best versions of all the models
+        builds, trains and evaluates best versions of all the models.
+        The model is trained on 'training'+'validation' data.
 
         Parameters
         ----------
@@ -1306,6 +1325,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         Returns
         -------
+            None
 
         """
         met_name = metric_name or self.parent_val_metric
@@ -1329,22 +1349,44 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         return
 
-    def post_fit(self):
-        """post processing of results"""
+    def post_fit(self) -> None:
+        """post processing of results to draw dumbell plot and taylor plot."""
+
         self.bfe_all_best_models()
         self.dumbbell_plot(metric_name=self.parent_val_metric)
         self.taylor_plot()
 
         return
 
-    def cleanup(self):
-        """removes the folders from disk"""
+    def cleanup(
+            self,
+            dirs_to_exclude: Union[str, list] = None
+    ) -> None:
+        """removes the folders from path except the 'results_from_scratch' and
+        the folders defined by user.
+
+        Parameters
+        ----------
+            dirs_to_exclude : str, list, optional
+                The names of folders inside path which should not be deleted.
+
+        Returns
+        -------
+            None
+        """
+        if isinstance(dirs_to_exclude, str):
+            dirs_to_exclude = [dirs_to_exclude]
+
+        if dirs_to_exclude is None:
+            dirs_to_exclude = []
+
         for _item in os.listdir(self.path):
             _path = os.path.join(self.path, _item)
             if os.path.isdir(_path):
-                if _item not in ['results_from_scratch']:
-                    raise NotImplementedError
+                if _item not in ['results_from_scratch'] + dirs_to_exclude:
+                    shutil.rmtree(_path)
         return
+
 
 def eval_model_manually(model, metric: str, Metrics) -> float:
     """evaluates the model"""
