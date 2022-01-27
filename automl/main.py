@@ -1003,7 +1003,7 @@ class OptimizePipeline(object):
             self.bfe_all_best_models()
 
         ax = taylor_plot(
-            show=show,
+            show=False,
             plot_bias=plot_bias,
             cont_kws={},
             grid_kws={},
@@ -1016,11 +1016,16 @@ class OptimizePipeline(object):
         if save:
             plt.savefig(fname, dpi=300, bbox_inches="tight")
 
-        sim = self.taylor_plot_inputs['simulations']['test']
-        sim = pd.DataFrame.from_dict(sim)
-        sim['trues'] = self.taylor_plot_inputs['trues']['test']
+        if show:
+            plt.show()
 
-        sim.to_csv(os.path.join(self.path, "taylor_data.csv"))
+        # save taylor plot data as csv file, first make a dataframe
+        sim = self.taylor_plot_inputs['simulations']['test']
+        data = np.column_stack([v.reshape(-1, ) for v in sim.values()])
+        df = pd.DataFrame(data, columns=list(sim.keys()))
+        df['trues'] = self.taylor_plot_inputs['trues']['test']
+
+        df.to_csv(os.path.join(self.path, "taylor_data.csv"))
 
         return ax
 
