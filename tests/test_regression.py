@@ -161,6 +161,13 @@ class TestRegression(unittest.TestCase):
         assert y_transformation in output_transformations
         return
 
+    def test_tpe(self):
+        pl = run_basic(parent_algorithm="tpe",
+        parent_iterations=12, parent_val_metric="nse",)
+        pl.post_fit()
+        pl.cleanup()
+
+        return
 
 if __name__ == "__main__":
     unittest.main()

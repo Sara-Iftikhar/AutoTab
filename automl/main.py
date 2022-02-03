@@ -526,7 +526,8 @@ class OptimizePipeline(object):
             param_space=self.space(),
             objective_fn=self.parent_objective,
             num_iterations=self.parent_iterations,
-            opt_path=self.path
+            opt_path=self.path,
+            verbosity = 0
         )
 
         if previous_results is not None:
@@ -995,7 +996,10 @@ class OptimizePipeline(object):
             save :
 
             **kwargs :
-                any additional keyword arguments for taylor_plot function of ai4water.
+                any additional keyword arguments for taylor_plot function of `easy_mpl`_.
+        
+        .. _easy_mpl:
+            https://github.com/Sara-Iftikhar/easy_mpl#taylor_plot
         """
 
         if self.taylor_plot_inputs['observations']['test'] is None:
@@ -1338,6 +1342,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             None
 
         """
+        # todo, should we monitor parent_val_metric by default?
         met_name = metric_name or self.parent_val_metric
 
         for model in self.models:
