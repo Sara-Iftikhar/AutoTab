@@ -15,10 +15,9 @@ from collections import OrderedDict, defaultdict
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from easy_mpl import dumbbell_plot
+from easy_mpl import dumbbell_plot, taylor_plot
 
 from ai4water import Model
-from ai4water.utils import taylor_plot
 from ai4water._optimize import make_space
 from ai4water.utils.utils import MATRIC_TYPES
 from ai4water.hyperopt.utils import to_skopt_space
@@ -240,7 +239,7 @@ class OptimizePipeline(object):
         # It will be populated during postprocessing
         self.taylor_plot_inputs = {
             'simulations': {"test": {}},
-            'trues': {"test": None}
+            'observations': {"test": None}
         }
 
     @property
@@ -999,7 +998,7 @@ class OptimizePipeline(object):
                 any additional keyword arguments for taylor_plot function of ai4water.
         """
 
-        if self.taylor_plot_inputs['trues']['test'] is None:
+        if self.taylor_plot_inputs['observations']['test'] is None:
             self.bfe_all_best_models()
 
         ax = taylor_plot(
@@ -1023,7 +1022,7 @@ class OptimizePipeline(object):
         sim = self.taylor_plot_inputs['simulations']['test']
         data = np.column_stack([v.reshape(-1, ) for v in sim.values()])
         df = pd.DataFrame(data, columns=list(sim.keys()))
-        df['trues'] = self.taylor_plot_inputs['trues']['test']
+        df['observations'] = self.taylor_plot_inputs['observations']['test']
 
         df.to_csv(os.path.join(self.path, "taylor_data.csv"))
 
@@ -1315,7 +1314,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         t, p = model.predict(data='test', metrics="all", return_true=True)
 
         if model_name:
-            self.taylor_plot_inputs['trues']['test'] = t
+            self.taylor_plot_inputs['observations']['test'] = t
             self.taylor_plot_inputs['simulations']['test'][model_name] = p
 
         return

@@ -1,6 +1,10 @@
+import os
 import unittest
 import site
 import warnings
+
+package_path = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))) 
+site.addsitedir(package_path)
 
 site.addsitedir(r"E:\AA\AI4Water")
 
