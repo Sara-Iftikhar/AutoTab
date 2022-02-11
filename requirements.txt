@@ -8,3 +8,4 @@ catboost
 hyperopt
 optuna
 matplotlib
+easy_mpl>=0.20.3

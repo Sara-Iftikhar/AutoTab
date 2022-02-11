@@ -6,7 +6,7 @@ import warnings
 package_path = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))) 
 site.addsitedir(package_path)
 
-site.addsitedir(r"E:\AA\AI4Water")
+site.addsitedir(r"D:\mytools\AI4Water")
 
 def warn(*args, **kwargs):
     pass
@@ -51,9 +51,8 @@ def build_basic(parent_algorithm="random", child_algorithm="random",
         ],
         input_features=data.columns.tolist()[0:-1],
         output_features=data.columns.tolist()[-1:],
-        train_data="random",
-        val_data="same",
-        val_fraction=0.0,
+        split_random=True,
+        train_fraction=1.0,
         **kwargs
     )
 
@@ -82,6 +81,8 @@ class TestMetrics(unittest.TestCase):
 
 
 class TestRegression(unittest.TestCase):
+
+    show = False
 
     def test_basic(self):
         pl = run_basic()
@@ -144,9 +145,17 @@ class TestRegression(unittest.TestCase):
         return
 
     def test_dumbbell_plot(self):
-        pl = run_basic(parent_iterations=7)
-        ax = pl.dumbbell_plot('r2', show=False)
+        pl = run_basic(parent_iterations=7,
+            models=[
+            "LinearRegression",
+            "LassoLars",
+            "Lasso",
+            "RandomForestRegressor",
+            "HistGradientBoostingRegressor",
+        ])
+        ax = pl.dumbbell_plot('r2', show=self.show)
         assert isinstance(ax, plt.Axes)
+        pl.cleanup()
         return
 
     def test_y_transformations(self):

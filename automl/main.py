@@ -955,10 +955,23 @@ class OptimizePipeline(object):
         df = df.reset_index()
         df.columns = ['models', 'baseline', 'optimized']
 
+        _labels = df['models'].tolist()
+        labels = []
+
+        for label in _labels:
+            if label.endswith('Regressor'):
+                label = label.replace('Regressor', '')
+            elif label.endswith('Classifier'):
+                label = label.replace('Classifier', '')
+            labels.append(label)
+
+        df.to_csv(os.path.join(self.path, "dumbell_data.csv"))
+
+        baseline = np.where(df['baseline']<-1.0, -1.0, df['baseline'])
         fig, ax = plt.subplots(figsize=figsize)
-        ax = dumbbell_plot(df['baseline'],
+        ax = dumbbell_plot(baseline,
                            df['optimized'],
-                           labels=df['models'],
+                           labels=labels,
                            show=False,
                            xlabel=metric_name,
                            ylabel="Models",
@@ -967,8 +980,9 @@ class OptimizePipeline(object):
 
         fpath = os.path.join(self.path, "dumbell")
         if save:
-            plt.savefig(fpath, dpi=300)
+            plt.savefig(fpath, dpi=300, bbox_inches='tight')
         if show:
+            plt.tight_layout()
             plt.show()
 
         return ax
