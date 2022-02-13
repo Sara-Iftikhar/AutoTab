@@ -15,7 +15,7 @@ from collections import OrderedDict, defaultdict
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from easy_mpl import dumbbell_plot, taylor_plot
+from easy_mpl import dumbbell_plot, taylor_plot, circular_bar_plot, bar_chart
 
 from ai4water import Model
 from ai4water._optimize import make_space
@@ -214,6 +214,11 @@ class OptimizePipeline(object):
         self.monitor = monitor
         if isinstance(monitor, str):
             monitor = [monitor]
+
+        # parent_val_metric is monitored by default
+        if parent_val_metric not in monitor:
+            monitor.append(parent_val_metric)
+
         assert isinstance(monitor, list)
 
         self.metrics = {metric: OrderedDict() for metric in monitor}
@@ -589,10 +594,12 @@ class OptimizePipeline(object):
             'path': model.path
         }
 
-        val_score = self._fit_and_eval(model, self.cv_parent_hpo, self.parent_val_metric)
+        val_score = self._fit_and_eval(model, self.cv_parent_hpo,
+                                       self.parent_val_metric)
 
         # calculate all additional performance metrics which are being monitored
-        t, p = model.predict(data='validation', return_true=True, process_results=False)
+        t, p = model.predict(data='validation', return_true=True,
+                             process_results=False)
         errors = RegressionMetrics(t, p, remove_zero=True, remove_neg=True)
 
         for k, v in self.metrics.items():
@@ -634,7 +641,8 @@ class OptimizePipeline(object):
                 prefix=f"{self.parent_prefix}{SEP}{CHILD_PREFIX}",
             )
 
-            val_score = self._fit_and_eval(model, self.cv_child_hpo, self.child_val_metric)
+            val_score = self._fit_and_eval(model, self.cv_child_hpo,
+                                           self.child_val_metric)
 
             # populate all child val scores
             self.child_val_scores_[self.parent_iter_-1, self.child_iter_-1] = val_score
@@ -738,8 +746,7 @@ class OptimizePipeline(object):
         The metric must be recorded i.e. must be given as `monitor` argument.
         """
         if metric_name not in self.metrics:
-            raise ValueError(f"{metric_name} is not a valid metric. Available "
-                             f"metrics are {self.metrics.keys()}")
+            raise MetricNotMonitored(metric_name, list(self.metrics.keys()))
 
         if MATRIC_TYPES[metric_name] == "min":
             return np.nanmin(list(self.metrics[metric_name].values())).item()
@@ -758,8 +765,7 @@ class OptimizePipeline(object):
         """
 
         if metric_name not in self.metrics:
-            raise ValueError(f"{metric_name} is not a valid metric. Available "
-                             f"metrics are {list(self.metrics.keys())}")
+            raise MetricNotMonitored(metric_name, list(self.metrics.keys()))
 
         if MATRIC_TYPES[metric_name] == "min":
             idx = np.nanargmin(list(self.metrics[metric_name].values()))
@@ -822,8 +828,7 @@ class OptimizePipeline(object):
 
         # checks if the given metric is a valid metric or not
         if metric_name not in self.metrics:
-            raise ValueError(f"{metric_name} is not a valid metric. Available "
-                             f"metrics are {self.metrics.keys()}")
+            raise MetricNotMonitored(metric_name, self.metrics.keys())
 
         # initialize an empty dictionary to store model parameters
         model_container = {}
@@ -994,7 +999,7 @@ class OptimizePipeline(object):
             show: bool = True,
             save: bool = True,
             **kwargs
-    ) -> plt.Axes:
+    ) -> plt.Figure:
         """makes taylor plot using the best version of each model.
         The number of models in taylor plot will be equal to the number
         of models which have been considered by the model.
@@ -1011,7 +1016,11 @@ class OptimizePipeline(object):
 
             **kwargs :
                 any additional keyword arguments for taylor_plot function of `easy_mpl`_.
-        
+
+        Returns
+        -------
+            matplotlib.pyplot.Figure
+
         .. _easy_mpl:
             https://github.com/Sara-Iftikhar/easy_mpl#taylor_plot
         """
@@ -1220,7 +1229,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         cpath = os.path.join(pipeline['path'], "config.json")
         model = Model.from_config_file(cpath)
 
-        wpath = os.path.join(pipeline['path'], "weights", list(pipeline['model'].keys())[0])
+        wpath = os.path.join(pipeline['path'], "weights",
+                             list(pipeline['model'].keys())[0])
         model.update_weights(wpath)
 
         self._evaluate_model(model)
@@ -1277,7 +1287,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             an instance of trained ai4water Model
         """
         if model_name:
-            pipeline, met_val = self.get_best_pipeline_by_model(model_name, metric_name)
+            pipeline, met_val = self.get_best_pipeline_by_model(model_name,
+                                                                metric_name)
         else:
             met_val = self.get_best_metric(metric_name)
             pipeline = self.get_best_pipeline_by_metric(metric_name=metric_name)
@@ -1285,7 +1296,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         met_val = round(met_val, 3)
 
         model_name = model_name or ''
-        prefix = f"{self.path}{SEP}results_from_scratch{SEP}{metric_name}_{met_val}_{model_name}"
+        suffix = f"{SEP}{metric_name}_{met_val}_{model_name}"
+        prefix = f"{self.path}{SEP}results_from_scratch{suffix}"
 
         model = self._build_and_eval_from_scratch(
             model=pipeline['model'],
@@ -1356,7 +1368,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             None
 
         """
-        # todo, should we monitor parent_val_metric by default?
+
         met_name = metric_name or self.parent_val_metric
 
         for model in self.models:
@@ -1384,6 +1396,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         self.bfe_all_best_models()
         self.dumbbell_plot(metric_name=self.parent_val_metric)
         self.taylor_plot()
+        self.compare_models()
+        self.compare_models(plot_type="bar_chart")
 
         return
 
@@ -1416,11 +1430,79 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                     shutil.rmtree(_path)
         return
 
+    def compare_models(
+            self,
+            metric_name: str = None,
+            plot_type: str = "circular",
+            show : bool = False,
+            **kwargs
+    )->plt.Axes:
+        """
+        Compares all the models with respect to a metric and plots a bar plot.
+
+         Parameters
+         ----------
+         metric_name : str, optional
+            The metric with respect to which to compare the models.
+         plot_type : str, optional
+            if "circular" then `easy_mpl.circular_bar_chart`_ is drawn otherwise
+            a simple bar_plot is drawn.
+         show : bool, optional
+            whether to show the plot or not
+         **kwargs :
+            keyword arguments for `easy_mpl.circular_bar_plot`_ or `easy_mpl.bar_chart`_
+
+        Returns
+        -------
+            matplotlib.pyplot.Axes
+
+        .. easy_mpl.circular_bar_plot_
+            https://easy-mpl.readthedocs.io/en/latest/#module-12
+
+        .. easy_mpl.bar_chart_
+            https://easy-mpl.readthedocs.io/en/latest/#module-1
+        """
+
+        metric_name = metric_name or self.parent_val_metric
+
+        models = {}
+
+        for model in self.models:
+
+            try:
+                metric_val, _ = self.get_best_pipeline_by_model(model, metric_name)
+                models[model] = metric_val
+            except ModelNotUsedError:
+                continue
+
+        if plot_type == "circular":
+            ax = circular_bar_plot(np.array(list(models.values())),
+                                   list(models.keys()),
+                                   sort=True,
+                                   show=False,
+                                   **kwargs)
+        else:
+            ax = bar_chart(list(models.values()),
+                           list(models.keys()),
+                           sort=True,
+                           show=False,
+                           **kwargs)
+
+        fpath = os.path.join(self.path, f"{plot_type}_plot_wrt_{metric_name}")
+        plt.savefig(fpath, dpi=300, bbox_inches='tight')
+
+        if show:
+            plt.tight_layout()
+            plt.show()
+
+        return ax
+
 
 def eval_model_manually(model, metric: str, Metrics) -> float:
     """evaluates the model"""
     # make prediction on validation data
-    t, p = model.predict(data='validation', return_true=True, process_results=False)
+    t, p = model.predict(data='validation', return_true=True,
+                         process_results=False)
     errors = Metrics(t, p, remove_zero=True, remove_neg=True)
     val_score = getattr(errors, metric)()
 
@@ -1437,6 +1519,17 @@ def eval_model_manually(model, metric: str, Metrics) -> float:
 
     return val_score
 
+
+class MetricNotMonitored(Exception):
+    def __init__(self, metric_name, available_metrics):
+        self.metric = metric_name
+        self.avail_metrics = available_metrics
+
+    def __str__(self):
+        return f"""
+        metric {self.metric} was not monitored. Please choose from
+        {self.avail_metrics}
+        """
 
 class ModelNotUsedError(Exception):
     def __init__(self, model_name):

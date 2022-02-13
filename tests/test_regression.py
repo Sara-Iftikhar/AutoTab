@@ -79,6 +79,9 @@ class TestMetrics(unittest.TestCase):
 
         return
 
+class TestBinaryCls(unittest.TestCase):
+    """test binary classification"""
+
 
 class TestRegression(unittest.TestCase):
 
@@ -154,6 +157,20 @@ class TestRegression(unittest.TestCase):
             "HistGradientBoostingRegressor",
         ])
         ax = pl.dumbbell_plot('r2', show=self.show)
+        assert isinstance(ax, plt.Axes)
+        pl.cleanup()
+        return
+
+    def test_bar_plot(self):
+        pl = run_basic(parent_iterations=7,
+            models=[
+            "LinearRegression",
+            "LassoLars",
+            "Lasso",
+            "RandomForestRegressor",
+            "HistGradientBoostingRegressor",
+        ])
+        ax = pl.compare_models('r2', show=self.show)
         assert isinstance(ax, plt.Axes)
         pl.cleanup()
         return
