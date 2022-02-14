@@ -1,0 +1,14 @@
+numpy
+pandas
+scikit-optimize
+scikit-learn
+lightgbm
+xgboost
+catboost
+hyperopt
+optuna
+matplotlib
+easy_mpl>=0.20.3
+
+xarray
+netcdf4

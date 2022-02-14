@@ -98,7 +98,7 @@ class OptimizePipeline(object):
             child_val_metric: str = "mse",
             cv_parent_hpo: bool = None,
             cv_child_hpo: bool = None,
-            monitor: Union[list, str] = "r2",
+            monitor: Union[list, str] = None,
             mode: str = "regression",
             **model_kwargs
     ):
@@ -174,7 +174,8 @@ class OptimizePipeline(object):
                 If False, then val_score will be caclulated on validation data.
                 The type of cross validator used is taken from model.config['cross_validator']
             monitor :
-                Nmaes of performance metrics to monitor in parent hpo loop
+                Nmaes of performance metrics to monitor in parent hpo loop. If None,
+                then R2 is monitored for regression and accuracy for classification.
             mode : bool
                 whether this is a `regression` problem or `classification`
             **model_kwargs :
@@ -211,6 +212,12 @@ class OptimizePipeline(object):
         self.outputs_to_transform = outputs_to_transform
 
         # self.seed = None
+        if monitor is None:
+            if mode == "regression":
+                monitor = ['r2']
+            else:
+                monitor = ['accuracy']
+
         self.monitor = monitor
         if isinstance(monitor, str):
             monitor = [monitor]
@@ -600,7 +607,7 @@ class OptimizePipeline(object):
         # calculate all additional performance metrics which are being monitored
         t, p = model.predict(data='validation', return_true=True,
                              process_results=False)
-        errors = RegressionMetrics(t, p, remove_zero=True, remove_neg=True)
+        errors = self.Metrics(t, p, remove_zero=True, remove_neg=True)
 
         for k, v in self.metrics.items():
             v[self.parent_iter_] = getattr(errors, k)()
@@ -1503,6 +1510,9 @@ def eval_model_manually(model, metric: str, Metrics) -> float:
     # make prediction on validation data
     t, p = model.predict(data='validation', return_true=True,
                          process_results=False)
+    
+    p = p.reshape(-1, 1)  # TODO, for cls, Metrics do not accept (n,) array
+
     errors = Metrics(t, p, remove_zero=True, remove_neg=True)
     val_score = getattr(errors, metric)()
 
