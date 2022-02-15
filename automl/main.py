@@ -117,18 +117,18 @@ class OptimizePipeline(object):
                 If list, then it will be the names of transformations to be considered for
                 all input features. By default following transformations are considered
 
-                    - `minmax`  rescale from 0 to 1
-                    - `center`    center the data by subtracting mean from it
-                    - `scale`     scale the data by dividing it with its standard deviation
-                    - `zscore`    first performs centering and then scaling
-                    - `box-cox`
-                    - `yeo-johnson`
-                    - `quantile`
-                    - `robust`
-                    - `log`
-                    - `log2`
-                    - `log10`
-                    - `sqrt`    square root
+                    - ``minmax``  rescale from 0 to 1
+                    - ``center``    center the data by subtracting mean from it
+                    - ``scale`     scale the data by dividing it with its standard deviation
+                    - ``zscore``    first performs centering and then scaling
+                    - ``box-cox``
+                    - ``yeo-johnson``
+                    - ``quantile``
+                    - ``robust``
+                    - ``log``
+                    - ``log2``
+                    - ``log10``
+                    - ``sqrt``    square root
 
                 The user can however, specify list of transformations to be considered for
                 each input feature. In such a case, this argument must be a dictionary
@@ -141,12 +141,14 @@ class OptimizePipeline(object):
                 The transformations to be considered for outputs/targets. By default
                 following transformations are considered for outputs
 
-                    - `log`
-                    - `log10`
-                    - `sqrt`
-                    - `log2`
-            models : list
-                The models to consider during optimzation.
+                    - ``log``
+                    - ``log10``
+                    - ``sqrt``
+                    - ``log2``
+            models : list, optional
+                The models to consider during optimzation. If not given, then all
+                available models from sklearn, xgboost, catboost and lgbm are
+                considered.
             parent_iterations : int, optional
                 Number of iterations for parent optimization loop
             child_iterations : int, optional
@@ -176,8 +178,8 @@ class OptimizePipeline(object):
             monitor :
                 Nmaes of performance metrics to monitor in parent hpo loop. If None,
                 then R2 is monitored for regression and accuracy for classification.
-            mode : bool
-                whether this is a `regression` problem or `classification`
+            mode : str
+                whether this is a ``regression`` problem or ``classification``
             **model_kwargs :
                 any additional key word arguments for ai4water's Model
 
@@ -186,6 +188,7 @@ class OptimizePipeline(object):
         self.input_transformations = input_transformations
         self.output_transformations = output_transformations or DEFAULT_Y_TRANFORMATIONS
 
+        assert mode in ("regression", "classification")
         self.mode = mode
         self.models = models
         if models is None:
@@ -193,6 +196,11 @@ class OptimizePipeline(object):
                 self.models = list(regression_space(2).keys())
             else:
                 self.models = list(classification_space(2).keys())
+        elif isinstance(models, list):
+            assert all([isinstance(obj, str) for obj in models])
+            if len(set(models)) != len(models):
+                raise ValueError(f"models contain repeating values. \n{models}")
+
 
         self.parent_iterations = parent_iterations
         self.child_iterations = child_iterations
@@ -253,6 +261,9 @@ class OptimizePipeline(object):
             'simulations': {"test": {}},
             'observations': {"test": None}
         }
+
+        self._optimize_estimator = True
+        self._estimator = None
 
     @property
     def outputs_to_transform(self):
@@ -472,8 +483,12 @@ class OptimizePipeline(object):
                         categories=set(x_categories + y_categories),
                         append=append)
 
-        algos = Categorical(self.models, name="estimator")
-        sp = sp + [algos]
+        if len(self.models)>1:
+            algos = Categorical(self.models, name="estimator")
+            sp = sp + [algos]
+        else:
+            self._optimize_estimator = False
+            self._estimator = self.models[0]
 
         return sp
 
@@ -575,18 +590,23 @@ class OptimizePipeline(object):
 
         # self.seed = np.random.randint(0, 10000, 1).item()
 
+        if self._optimize_estimator:
+            estimator = suggestions['estimator']
+        else:
+            estimator = self._estimator
+
         x_trnas, y_trans = self._cook_transformations(suggestions)
 
         # optimize the hyperparas of estimator using child objective
         opt_paras = self.optimize_estimator_paras(
-            suggestions['estimator'],
+            estimator,
             x_transformations=x_trnas,
             y_transformations=y_trans or None
         )
 
         # fit the model with optimized hyperparameters and suggested transformations
         model = self._build_model(
-            model={suggestions["estimator"]: opt_paras},
+            model={estimator: opt_paras},
             val_metric=self.parent_val_metric,
             x_transformation=x_trnas,
             y_transformation=y_trans,
@@ -597,7 +617,7 @@ class OptimizePipeline(object):
             # 'seed': self.seed,
             'x_transformation': x_trnas,
             'y_transformation': y_trans,
-            'model': {suggestions['estimator']: opt_paras},
+            'model': {estimator: opt_paras},
             'path': model.path
         }
 
@@ -1013,14 +1033,14 @@ class OptimizePipeline(object):
 
         Parameters
         ----------
-            plot_bias :
-
-            figsize :
+            plot_bias : bool, optional
+                whether to plot the bias or not
+            figsize : tuple, optional
                 a tuple determining figure size
-            show :
-
-            save :
-
+            show : bool, optional
+                whether to show the plot or not
+            save : bool, optional
+                whether to save the plot or not
             **kwargs :
                 any additional keyword arguments for taylor_plot function of `easy_mpl`_.
 
@@ -1037,6 +1057,7 @@ class OptimizePipeline(object):
 
         ax = taylor_plot(
             show=False,
+            save=False,
             plot_bias=plot_bias,
             cont_kws={},
             grid_kws={},
@@ -1402,9 +1423,12 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         self.bfe_all_best_models()
         self.dumbbell_plot(metric_name=self.parent_val_metric)
-        self.taylor_plot()
-        self.compare_models()
-        self.compare_models(plot_type="bar_chart")
+
+        # following plots only make sense if more than one models are tried
+        if self._optimize_estimator:
+            self.taylor_plot()
+            self.compare_models()
+            self.compare_models(plot_type="bar_chart")
 
         return
 

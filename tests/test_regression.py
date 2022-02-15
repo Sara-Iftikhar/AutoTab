@@ -16,14 +16,9 @@ warnings.warn = warn
 import matplotlib.pyplot as plt
 
 from ai4water.datasets import busan_beach
-from ai4water.datasets import MtropicsLaos
 
 from automl import OptimizePipeline
 
-
-cls_data = MtropicsLaos().make_classification(lookback_steps=1,)
-inputs_cls = cls_data.columns.tolist()[0:-1]
-outputs_cls = cls_data.columns.tolist()[-1:]
 
 inputs = ['tide_cm', 'wat_temp_c', 'sal_psu',
           'pcp3_mm',  # 'pcp6_mm', 'pcp12_mm',
@@ -82,36 +77,6 @@ class TestMetrics(unittest.TestCase):
         run_basic(parent_val_metric="r2", child_val_metric="r2",
                   parent_iterations=10, child_iterations=25)
 
-        return
-
-class TestBinaryCls(unittest.TestCase):
-    """test binary classification"""
-
-    def test_basic(self):
-        pl = OptimizePipeline(
-            inputs_to_transform=inputs_cls,
-            input_features = inputs_cls,
-            mode="classification",
-            parent_val_metric="accuracy",
-            child_val_metric="accuracy",
-            train_fraction=1.0,
-            models=["ExtraTreeClassifier",
-                    "RandomForestClassifier",
-                    #"XGBClassifier",
-                    #"CatBoostClassifier",
-                    #"LGBMClassifier",
-                    "GradientBoostingClassifier",
-                    "HistGradientBoostingClassifier",
-                    "ExtraTreesClassifier",
-                    ],
-            parent_iterations=12,
-            child_iterations=12,
-        )
-
-        results = pl.fit(data=cls_data)
-        #pl.post_fit() TODO
-        pl.cleanup()
-    
         return
 
 
@@ -226,6 +191,21 @@ class TestRegression(unittest.TestCase):
         pl.cleanup()
 
         return
+
+    def test_single_model(self):
+        pl = run_basic(models=["Lasso"])
+        pl.post_fit()
+        pl.cleanup()
+        return
+
+
+class TestRepeatition(unittest.TestCase):
+    """Should raise value error if some model is repeated"""
+    def test_model_names(self):
+        self.assertRaises(ValueError, build_basic,
+                          models=['Lasso', 'LassoLars', 'LassoCV', 'Lasso'])
+        return
+
 
 if __name__ == "__main__":
     unittest.main()
