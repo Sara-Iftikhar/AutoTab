@@ -9,7 +9,7 @@ import time
 import math
 import shutil
 import inspect
-from typing import Union
+from typing import Union, Callable
 from collections import OrderedDict, defaultdict
 
 import numpy as np
@@ -740,7 +740,12 @@ class OptimizePipeline(object):
             y_transformation,
             prefix: Union[str, None]
     ) -> "Model":
-        """build the ai4water Model"""
+        """build the ai4water Model. When overwriting this method, the user
+        must return an instance of ai4water's Model_ class.
+
+        .. Model:
+            https://ai4water.readthedocs.io/en/master/model.html#ai4water._main.BaseModel
+        """
         model = Model(
             model=model,
             verbosity=0,
@@ -782,14 +787,17 @@ class OptimizePipeline(object):
 
     def get_best_metric_iteration(
             self,
-            metric_name: str
+            metric_name: str = None
     ) -> int:
         """returns iteration of the best value of a particular performance metric.
 
         Arguments:
             metric_name:
                 The metric must be recorded i.e. must be given as `monitor` argument.
+                If not given, then evaluation metric is used.
         """
+
+        metric_name = metric_name or self.parent_val_metric
 
         if metric_name not in self.metrics:
             raise MetricNotMonitored(metric_name, list(self.metrics.keys()))
@@ -803,7 +811,7 @@ class OptimizePipeline(object):
 
     def get_best_pipeline_by_metric(
             self,
-            metric_name: str
+            metric_name: str = None
     ) -> dict:
         """returns the best pipeline with respect to a particular performance
         metric.
@@ -815,11 +823,13 @@ class OptimizePipeline(object):
         Returns:
             a dictionary with follwoing keys
 
-                - `path` path where the model is saved on disk
-                - `model` name of model
+                - ``path`` path where the model is saved on disk
+                - ``model`` name of model
                 - x_transfromations
                 - y_transformations
         """
+
+        metric_name = metric_name or self.parent_val_metric
 
         idx = self.get_best_metric_iteration(metric_name)
 
@@ -828,7 +838,7 @@ class OptimizePipeline(object):
     def get_best_pipeline_by_model(
             self,
             model_name: str,
-            metric_name: str
+            metric_name: str = None
     ) -> tuple:
         """returns the best pipeline with respect to a particular model and
         performance metric. The metric must be recorded i.e. must be given as
@@ -837,10 +847,11 @@ class OptimizePipeline(object):
         Arguments:
             model_name:
                 The name of model for which best pipeline is to be found. The `best`
-                is defined by `metric_name`.
+                is defined by ``metric_name``.
             metric_name:
                 The name of metric with respect to which the best model is to
-                be retrieved.
+                be retrieved. If not given, the best model is defined by the
+                evaluation metric.
         Returns:
             a tuple of length two
 
@@ -852,6 +863,8 @@ class OptimizePipeline(object):
                 model
                 path
         """
+
+        metric_name = metric_name or self.parent_val_metric
 
         # checks if the given metric is a valid metric or not
         if metric_name not in self.metrics:
@@ -934,7 +947,7 @@ class OptimizePipeline(object):
 
     def dumbbell_plot(
             self,
-            metric_name: str,
+            metric_name: str = None,
             figsize: tuple = None,
             show: bool = True,
             save: bool = True
@@ -946,7 +959,7 @@ class OptimizePipeline(object):
         ----------
             metric_name: str
                 The name of metric with respect to which the models have
-                to be compared.
+                to be compared. If not given, the evaluation metric is used.
             figsize: tuple
                 If given, plot will be generated of this size.
             show : bool
@@ -1010,7 +1023,7 @@ class OptimizePipeline(object):
                            ax=ax
                            )
 
-        fpath = os.path.join(self.path, "dumbell")
+        fpath = os.path.join(self.path, f"dumbell_{metric_name}")
         if save:
             plt.savefig(fpath, dpi=300, bbox_inches='tight')
         if show:
@@ -1231,16 +1244,17 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
     def be_best_model_from_config(
             self,
-            metric_name: str,
+            metric_name: str = None,
             model_name: str = None
     ):
-        """Build and Evaluate the best model with respect to metric from config.
+        """Build and Evaluate the best model with respect to metric *from config*.
 
         Parameters
         ----------
             metric_name : str
                 the metric with respect to which the best model is fetched
-                and then built/evaluated
+                and then built/evaluated. If not given, the best model is
+                built/evaluated with respect to evaluation metric.
             model_name : str, optional
                 If given, the best version of this model will be fetched and built.
                 The 'best' will be decided based upon `metric_name`
@@ -1249,6 +1263,9 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         -------
             an instance of trained ai4water Model
         """
+
+        metric_name = metric_name or self.parent_val_metric
+
         if model_name:
             _, pipeline = self.get_best_pipeline_by_model(model_name, metric_name)
         else:
@@ -1261,7 +1278,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                              list(pipeline['model'].keys())[0])
         model.update_weights(wpath)
 
-        self._evaluate_model(model)
+        self._populate_results(model)
 
         return model
 
@@ -1295,17 +1312,19 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
     def bfe_best_model_from_scratch(
             self,
-            metric_name: str,
+            metric_name: str = None,
             model_name: str = None
     ):
         """Builds, Trains and Evaluates the best model with respect to metric from
-        scratch. The model is trained on 'training'+'validation' data.
+        scratch. The model is trained on 'training'+'validation' data. Running
+        this mothod will also populate ``taylor_plot_inputs`` dictionary.
 
         Parameters
         ----------
             metric_name : str
                 the metric with respect to which the best model is searched
-                and then built/trained/evaluated
+                and then built/trained/evaluated. If None, the best model is
+                chosen based on the evaluation metric.
             model_name : str, optional
                 If given, the best version of this model will be found and built.
                 The 'best' will be decided based upon `metric_name`
@@ -1314,6 +1333,9 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         -------
             an instance of trained ai4water Model
         """
+
+        metric_name = metric_name or self.parent_val_metric
+
         if model_name:
             pipeline, met_val = self.get_best_pipeline_by_model(model_name,
                                                                 metric_name)
@@ -1354,11 +1376,11 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         model.fit_on_all_training_data(data=self.data_)
 
-        self._evaluate_model(model, model_name=model_name)
+        self._populate_results(model, model_name=model_name)
 
         return model
 
-    def _evaluate_model(
+    def _populate_results(
             self,
             model,
             model_name=None
@@ -1376,6 +1398,48 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             self.taylor_plot_inputs['simulations']['test'][model_name] = p
 
         return
+
+    def _evaluate_model(
+            self,
+            model: Callable,
+            metric_name: str = None,
+            data = 'test',
+            x = None,
+            y = None
+    )->float:
+        """Evaluates the ai4water's Model on the data for the metric.
+
+        Parameters
+        ----------
+            model :
+                an instance of ai4water's Model class
+            metric_name : str
+                name of performance metric. If not given, evaluation metric
+                is used.
+            data :
+                either a dataframe or a string. If string, it must be one of
+                ``training``, ``validation`` and ``test``.
+            x :
+                alternative to ``data``. Only required if ``data`` is not given.
+            y :
+                only required if x is given
+
+        Returns
+        -------
+            float, the evaluation score of model with respect to ``metric_name``
+        """
+        metric_name = metric_name or self.parent_val_metric
+
+        if x is not None:
+            assert y is not None
+            t, p = model.predict(x=x, y=y, process_results=False, return_true=True)
+        else:
+            assert x is None
+            t, p = model.predict(data=data, process_results=False, return_true=True)
+
+        errors = RegressionMetrics(t, p)
+
+        return getattr(errors, metric_name)()
 
     def bfe_all_best_models(
             self,
