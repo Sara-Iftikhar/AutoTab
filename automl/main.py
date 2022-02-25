@@ -1474,7 +1474,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             assert x is None
             t, p = model.predict(data=data, process_results=False, return_true=True)
 
-        errors = RegressionMetrics(t, p)
+        errors = self.Metrics(t, p)
 
         return getattr(errors, metric_name)()
 

@@ -1,4 +1,4 @@
-ai4water
+ai4water>=1.0b4
 sphinx
 rinohtype
 sphinx_issues
