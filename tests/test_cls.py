@@ -3,11 +3,8 @@ import os
 import unittest
 import site
 
-
 package_path = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 site.addsitedir(package_path)
-
-site.addsitedir(r"D:\mytools\AI4Water")
 
 from ai4water.datasets import MtropicsLaos
 
@@ -17,6 +14,7 @@ from automl import OptimizePipeline
 cls_data = MtropicsLaos().make_classification(lookback_steps=1,)
 inputs_cls = cls_data.columns.tolist()[0:-1]
 outputs_cls = cls_data.columns.tolist()[-1:]
+
 
 class TestBinaryCls(unittest.TestCase):
     """test binary classification"""
@@ -29,6 +27,7 @@ class TestBinaryCls(unittest.TestCase):
             parent_val_metric="accuracy",
             child_val_metric="accuracy",
             train_fraction=1.0,
+            val_fraction=0.3,
             models=["ExtraTreeClassifier",
                     "RandomForestClassifier",
                     # "XGBClassifier",
@@ -37,6 +36,10 @@ class TestBinaryCls(unittest.TestCase):
                     "GradientBoostingClassifier",
                     "HistGradientBoostingClassifier",
                     "ExtraTreesClassifier",
+                    "RidgeClassifier",
+                    #"NuSVC",
+                    "SVC",
+                    "KNeighborsClassifier",
                     ],
             parent_iterations=12,
             child_iterations=12,

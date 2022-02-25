@@ -1,3 +1,4 @@
+ai4water
 numpy
 pandas
 scikit-optimize
@@ -9,3 +10,4 @@ hyperopt
 optuna
 matplotlib
 easy_mpl>=0.20.3
+SeqMetrics

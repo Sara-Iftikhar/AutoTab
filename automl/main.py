@@ -1,7 +1,4 @@
 
-import site
-site.addsitedir('E:\\AA\\AI4Water')
-
 import os
 import gc
 import json
@@ -15,6 +12,7 @@ from collections import OrderedDict, defaultdict
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from SeqMetrics import RegressionMetrics, ClassificationMetrics
 from easy_mpl import dumbbell_plot, taylor_plot, circular_bar_plot, bar_chart
 
 from ai4water import Model
@@ -24,7 +22,6 @@ from ai4water.hyperopt.utils import to_skopt_space
 from ai4water.utils.utils import dateandtime_now, jsonize
 from ai4water.hyperopt import Categorical, HyperOpt, Integer
 from ai4water.experiments.utils import regression_space, classification_space
-from ai4water.postprocessing.SeqMetrics import RegressionMetrics, ClassificationMetrics
 
 
 SEP = os.sep
@@ -1186,6 +1183,43 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         return init_paras
 
+    @staticmethod
+    def _version_info() -> dict:
+        """returns version of the third party libraries used"""
+        import ai4water
+        import SeqMetrics
+        import matplotlib
+        import sklearn
+        import easy_mpl
+        versions = dict()
+        versions['ai4water'] = ai4water.__version__
+        versions['SeqMetrics'] = SeqMetrics.__version__
+        versions['easy_mpl'] = easy_mpl.__version__
+        versions['numpy'] = np.__version__
+        versions['pandas'] = pd.__version__
+        versions['matplotlib'] = matplotlib.__version__
+        versions['sklearn'] = sklearn.__version__
+
+        try:
+            import xgboost
+            versions['xgboost'] = xgboost.__version__
+        except (ModuleNotFoundError, ImportError):
+            versions['xgboost'] = None
+
+        try:
+            import catboost
+            versions['catboost'] = catboost.__version__
+        except (ModuleNotFoundError, ImportError):
+            versions['catboost'] = None
+
+        try:
+            import lightgbm
+            versions['lightgbm'] = lightgbm.__version__
+        except (ModuleNotFoundError, ImportError):
+            versions['lightgbm'] = None
+
+        return versions
+
     def config(self) -> dict:
         """
         Returns a dictionary which contains all the information about the class
@@ -1193,11 +1227,14 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         Returns
         -------
-            a dictionary with two keys `init_paras` and `runtime_paras`.
+        dict
+            a dictionary with two keys `init_paras` and `runtime_paras` and
+            `version_info`.
 
         """
         _config = {
             'init_paras': self._init_paras(),
+            'version_info': self._version_info(),
             'runtime_attrs': self._runtime_attrs()
         }
         return _config

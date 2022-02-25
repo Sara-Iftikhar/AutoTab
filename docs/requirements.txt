@@ -1,3 +1,4 @@
+ai4water
 sphinx
 rinohtype
 sphinx_issues
