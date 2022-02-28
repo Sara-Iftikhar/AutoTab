@@ -6,7 +6,6 @@ import warnings
 package_path = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))) 
 site.addsitedir(package_path)
 
-site.addsitedir(r"D:\mytools\AI4Water")
 
 def warn(*args, **kwargs):
     pass
@@ -29,7 +28,7 @@ data = busan_beach(inputs=inputs)
 
 def build_basic(parent_algorithm="random", child_algorithm="random",
               parent_iterations=4, child_iterations=4,
-              evaluation_metric="mse",
+              eval_metric="mse",
                 models = None,
               **kwargs
               ):
@@ -40,7 +39,7 @@ def build_basic(parent_algorithm="random", child_algorithm="random",
         child_iterations=child_iterations,
         parent_algorithm=parent_algorithm,
         child_algorithm=child_algorithm,
-        evaluation_metric=evaluation_metric,
+        eval_metric=eval_metric,
         monitor=['r2', 'nse'],
         models=models or [
             "LinearRegression",
@@ -73,7 +72,7 @@ class TestMetrics(unittest.TestCase):
     """test different val_metrics for parent and child hpos"""
     def test_r2_as_val_metric(self):
 
-        run_basic(evaluation_metric="r2",
+        run_basic(eval_metric="r2",
                   parent_iterations=10, child_iterations=25)
 
         return
@@ -81,7 +80,7 @@ class TestMetrics(unittest.TestCase):
 
 class TestRegression(unittest.TestCase):
 
-    show = False
+    show = True
 
     def test_basic(self):
         pl = run_basic()
@@ -185,7 +184,7 @@ class TestRegression(unittest.TestCase):
 
     def test_tpe(self):
         pl = run_basic(parent_algorithm="tpe",
-        parent_iterations=12, evaluation_metric="nse",)
+        parent_iterations=12, eval_metric="nse",)
         pl.post_fit()
         pl.cleanup()
 

@@ -92,7 +92,7 @@ class OptimizePipeline(object):
             child_iterations: int = 25,
             parent_algorithm: str = "bayes",
             child_algorithm: str = "bayes",
-            evaluation_metric: str = "mse",
+            eval_metric: str = "mse",
             cv_parent_hpo: bool = None,
             cv_child_hpo: bool = None,
             monitor: Union[list, str] = None,
@@ -155,7 +155,7 @@ class OptimizePipeline(object):
                 Algorithm for optimization of parent optimzation
             child_algorithm : str, optional
                 Algorithm for optimization of child optimization
-            evaluation_metric : str, optional
+            eval_metric : str, optional
                 Validation metric to calculate val_score in objective function.
                 The parent and child hpo loop optimizes/improves this metric. This metric is
                 calculated on valdation data. If cross validation is performed then
@@ -204,7 +204,7 @@ class OptimizePipeline(object):
         self._child_iters = {model: child_iterations for model in self.models}
         self.parent_algorithm = parent_algorithm
         self.child_algorithm = child_algorithm
-        self.eval_metric = evaluation_metric
+        self.eval_metric = eval_metric
         self.cv_parent_hpo = cv_parent_hpo
         self.cv_child_hpo = cv_child_hpo
 
@@ -226,8 +226,8 @@ class OptimizePipeline(object):
             monitor = [monitor]
 
         # evaluation_metric is monitored by default
-        if evaluation_metric not in monitor:
-            monitor.append(evaluation_metric)
+        if eval_metric not in monitor:
+            monitor.append(eval_metric)
 
         assert isinstance(monitor, list)
 
@@ -1005,7 +1005,7 @@ class OptimizePipeline(object):
                 label = label.replace('Classifier', '')
             labels.append(label)
 
-        df.to_csv(os.path.join(self.path, "dumbell_data.csv"))
+        df.to_csv(os.path.join(self.path, f"dumbell_{metric_name}_data.csv"))
 
         baseline = np.where(df['baseline']<-1.0, -1.0, df['baseline'])
         fig, ax = plt.subplots(figsize=figsize)
@@ -1177,7 +1177,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         init_paras = {}
         for para in signature.parameters.values():
-            init_paras[para.name] = getattr(self, para.name)
+            if para.name not in ["prefix"]:
+                init_paras[para.name] = getattr(self, para.name)
 
         return init_paras
 
@@ -1496,7 +1497,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         Returns
         -------
-            None
+        None
 
         """
 
