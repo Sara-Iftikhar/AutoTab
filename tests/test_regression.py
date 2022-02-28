@@ -29,7 +29,7 @@ data = busan_beach(inputs=inputs)
 
 def build_basic(parent_algorithm="random", child_algorithm="random",
               parent_iterations=4, child_iterations=4,
-              parent_val_metric="mse", child_val_metric="mse",
+              evaluation_metric="mse",
                 models = None,
               **kwargs
               ):
@@ -40,8 +40,7 @@ def build_basic(parent_algorithm="random", child_algorithm="random",
         child_iterations=child_iterations,
         parent_algorithm=parent_algorithm,
         child_algorithm=child_algorithm,
-        parent_val_metric=parent_val_metric,
-        child_val_metric=child_val_metric,
+        evaluation_metric=evaluation_metric,
         monitor=['r2', 'nse'],
         models=models or [
             "LinearRegression",
@@ -74,7 +73,7 @@ class TestMetrics(unittest.TestCase):
     """test different val_metrics for parent and child hpos"""
     def test_r2_as_val_metric(self):
 
-        run_basic(parent_val_metric="r2", child_val_metric="r2",
+        run_basic(evaluation_metric="r2",
                   parent_iterations=10, child_iterations=25)
 
         return
@@ -186,7 +185,7 @@ class TestRegression(unittest.TestCase):
 
     def test_tpe(self):
         pl = run_basic(parent_algorithm="tpe",
-        parent_iterations=12, parent_val_metric="nse",)
+        parent_iterations=12, evaluation_metric="nse",)
         pl.post_fit()
         pl.cleanup()
 

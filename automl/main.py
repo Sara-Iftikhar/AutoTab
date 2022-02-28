@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 from SeqMetrics import RegressionMetrics, ClassificationMetrics
 from easy_mpl import dumbbell_plot, taylor_plot, circular_bar_plot, bar_chart
 
+import ai4water
 from ai4water import Model
 from ai4water._optimize import make_space
 from ai4water.utils.utils import MATRIC_TYPES
@@ -91,8 +92,7 @@ class OptimizePipeline(object):
             child_iterations: int = 25,
             parent_algorithm: str = "bayes",
             child_algorithm: str = "bayes",
-            parent_val_metric: str = "mse",
-            child_val_metric: str = "mse",
+            evaluation_metric: str = "mse",
             cv_parent_hpo: bool = None,
             cv_child_hpo: bool = None,
             monitor: Union[list, str] = None,
@@ -155,13 +155,11 @@ class OptimizePipeline(object):
                 Algorithm for optimization of parent optimzation
             child_algorithm : str, optional
                 Algorithm for optimization of child optimization
-            parent_val_metric : str, optional
-                Validation metric to calculate val_score in parent objective function.
-                The parent hpo loop optimizes/improves this metric. This metric is
+            evaluation_metric : str, optional
+                Validation metric to calculate val_score in objective function.
+                The parent and child hpo loop optimizes/improves this metric. This metric is
                 calculated on valdation data. If cross validation is performed then
                 this metric is calculated using cross validation.
-            child_val_metric : str, optional
-                Validation metric to calculate val_score in child objective function
             cv_parent_hpo : bool, optional
                 Whether we want to apply cross validation in parent hpo loop or not?.
                 If given, the parent hpo loop will optimize the cross validation score.
@@ -206,8 +204,7 @@ class OptimizePipeline(object):
         self._child_iters = {model: child_iterations for model in self.models}
         self.parent_algorithm = parent_algorithm
         self.child_algorithm = child_algorithm
-        self.parent_val_metric = parent_val_metric
-        self.child_val_metric = child_val_metric
+        self.eval_metric = evaluation_metric
         self.cv_parent_hpo = cv_parent_hpo
         self.cv_child_hpo = cv_child_hpo
 
@@ -228,9 +225,9 @@ class OptimizePipeline(object):
         if isinstance(monitor, str):
             monitor = [monitor]
 
-        # parent_val_metric is monitored by default
-        if parent_val_metric not in monitor:
-            monitor.append(parent_val_metric)
+        # evaluation_metric is monitored by default
+        if evaluation_metric not in monitor:
+            monitor.append(evaluation_metric)
 
         assert isinstance(monitor, list)
 
@@ -516,7 +513,7 @@ class OptimizePipeline(object):
         formatter = "{:<5} {:<18} " + "{:<15} " * (len(self.metrics))
         print(formatter.format(
             "Iter",
-            self.parent_val_metric,
+            self.eval_metric,
             *[k for k in self.metrics.keys()])
         )
 
@@ -605,7 +602,7 @@ class OptimizePipeline(object):
         # fit the model with optimized hyperparameters and suggested transformations
         model = self._build_model(
             model={estimator: opt_paras},
-            val_metric=self.parent_val_metric,
+            val_metric=self.eval_metric,
             x_transformation=x_trnas,
             y_transformation=y_trans,
             prefix=self.parent_prefix,
@@ -620,7 +617,7 @@ class OptimizePipeline(object):
         }
 
         val_score = self._fit_and_eval(model, self.cv_parent_hpo,
-                                       self.parent_val_metric)
+                                       self.eval_metric)
 
         # calculate all additional performance metrics which are being monitored
         t, p = model.predict(data='validation', return_true=True,
@@ -660,14 +657,14 @@ class OptimizePipeline(object):
             # build child model
             model = self._build_model(
                 model={estimator: suggestions},
-                val_metric=self.child_val_metric,
+                val_metric=self.eval_metric,
                 x_transformation=x_transformations,
                 y_transformation=y_transformations,
                 prefix=f"{self.parent_prefix}{SEP}{CHILD_PREFIX}",
             )
 
             val_score = self._fit_and_eval(model, self.cv_child_hpo,
-                                           self.child_val_metric)
+                                           self.eval_metric)
 
             # populate all child val scores
             self.child_val_scores_[self.parent_iter_-1, self.child_iter_-1] = val_score
@@ -795,7 +792,7 @@ class OptimizePipeline(object):
                 If not given, then evaluation metric is used.
         """
 
-        metric_name = metric_name or self.parent_val_metric
+        metric_name = metric_name or self.eval_metric
 
         if metric_name not in self.metrics:
             raise MetricNotMonitored(metric_name, list(self.metrics.keys()))
@@ -827,7 +824,7 @@ class OptimizePipeline(object):
                 - y_transformations
         """
 
-        metric_name = metric_name or self.parent_val_metric
+        metric_name = metric_name or self.eval_metric
 
         idx = self.get_best_metric_iteration(metric_name)
 
@@ -862,7 +859,7 @@ class OptimizePipeline(object):
                 path
         """
 
-        metric_name = metric_name or self.parent_val_metric
+        metric_name = metric_name or self.eval_metric
 
         # checks if the given metric is a valid metric or not
         if metric_name not in self.metrics:
@@ -914,7 +911,7 @@ class OptimizePipeline(object):
             # build model
             model = self._build_model(
                 model=estimator,
-                val_metric=self.parent_val_metric,
+                val_metric=self.eval_metric,
                 prefix=f"{self.parent_prefix}{SEP}baselines",
                 x_transformation=None,
                 y_transformation=None
@@ -926,7 +923,7 @@ class OptimizePipeline(object):
 
             t, p = model.predict(return_true=True)
             errors = self.Metrics(t, p)
-            val_scores[estimator] = getattr(errors, self.parent_val_metric)()
+            val_scores[estimator] = getattr(errors, self.eval_metric)()
 
             _metrics = {}
             for m in self.metrics.keys():
@@ -1304,7 +1301,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             an instance of trained ai4water Model
         """
 
-        metric_name = metric_name or self.parent_val_metric
+        metric_name = metric_name or self.eval_metric
 
         if model_name:
             _, pipeline = self.get_best_pipeline_by_model(model_name, metric_name)
@@ -1374,7 +1371,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             an instance of trained ai4water Model
         """
 
-        metric_name = metric_name or self.parent_val_metric
+        metric_name = metric_name or self.eval_metric
 
         if model_name:
             pipeline, met_val = self.get_best_pipeline_by_model(model_name,
@@ -1412,7 +1409,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                                   x_transformation=x_transformation,
                                   y_transformation=y_transformation,
                                   prefix=prefix,
-                                  val_metric=self.parent_val_metric)
+                                  val_metric=self.eval_metric)
 
         model.fit_on_all_training_data(data=self.data_)
 
@@ -1468,7 +1465,9 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         -------
             float, the evaluation score of model with respect to ``metric_name``
         """
-        metric_name = metric_name or self.parent_val_metric
+        metric_name = metric_name or self.eval_metric
+
+        assert hasattr(model, 'predict')
 
         if x is not None:
             assert y is not None
@@ -1501,7 +1500,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         """
 
-        met_name = metric_name or self.parent_val_metric
+        met_name = metric_name or self.eval_metric
 
         for model in self.models:
 
@@ -1532,7 +1531,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         """
 
         self.bfe_all_best_models()
-        self.dumbbell_plot(metric_name=self.parent_val_metric, show=show)
+        self.dumbbell_plot(metric_name=self.eval_metric, show=show)
 
         # following plots only make sense if more than one models are tried
         if self._optimize_estimator:
@@ -1604,7 +1603,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             https://easy-mpl.readthedocs.io/en/latest/#module-1
         """
 
-        metric_name = metric_name or self.parent_val_metric
+        metric_name = metric_name or self.eval_metric
 
         models = {}
 

@@ -38,7 +38,7 @@ class TestMLRegression(unittest.TestCase):
                 parent_iterations=12,
                 child_iterations=5,
                 seed=891,
-                parent_val_metric="r2_score",
+                evaluation_metric="r2_score",
                 child_algorithm="random",
                 )
         
