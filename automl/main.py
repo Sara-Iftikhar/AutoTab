@@ -97,6 +97,7 @@ class OptimizePipeline(object):
             cv_child_hpo: bool = None,
             monitor: Union[list, str] = None,
             mode: str = "regression",
+            prefix: str = None,
             **model_kwargs
     ):
         """
@@ -237,7 +238,7 @@ class OptimizePipeline(object):
 
         self.parent_suggestions = OrderedDict()
 
-        self.parent_prefix = f"pipeline_opt_{dateandtime_now()}"
+        self.parent_prefix = prefix or f"pipeline_opt_{dateandtime_now()}"
 
         if self.mode == "regression":
             space = regression_space(num_samples=10)
@@ -1262,7 +1263,9 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         with open(config_file, 'r') as fp:
             config = json.load(fp)
 
-        return cls(**config['init_paras'])
+        model_kwargs = config['init_paras'].pop('model_kwargs')
+
+        return cls(**config['init_paras'], **model_kwargs)
 
     @classmethod
     def from_config(cls, config: dict) -> "OptimizePipeline":
@@ -1519,17 +1522,23 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         return
 
-    def post_fit(self) -> None:
-        """post processing of results to draw dumbell plot and taylor plot."""
+    def post_fit(self, show:bool = True) -> None:
+        """post processing of results to draw dumbell plot and taylor plot.
+
+        Parameters
+        ----------
+        show : bool, optional
+            whether to show the plots or not
+        """
 
         self.bfe_all_best_models()
-        self.dumbbell_plot(metric_name=self.parent_val_metric)
+        self.dumbbell_plot(metric_name=self.parent_val_metric, show=show)
 
         # following plots only make sense if more than one models are tried
         if self._optimize_estimator:
-            self.taylor_plot()
-            self.compare_models()
-            self.compare_models(plot_type="bar_chart")
+            self.taylor_plot(show=show)
+            self.compare_models(show=show)
+            self.compare_models(plot_type="bar_chart", show=show)
 
         return
 
