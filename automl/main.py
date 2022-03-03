@@ -60,7 +60,7 @@ class OptimizePipeline(object):
     - models
         a list of models being considered for optimization
 
-    - estimator_space
+    - model_space
         a dictionary which contains parameter space for each model
 
     Example
@@ -144,7 +144,7 @@ class OptimizePipeline(object):
                     - ``sqrt``
                     - ``log2``
             models : list, optional
-                The models to consider during optimzation. If not given, then all
+                The models/algorithms to consider during optimzation. If not given, then all
                 available models from sklearn, xgboost, catboost and lgbm are
                 considered.
             parent_iterations : int, optional
@@ -200,7 +200,7 @@ class OptimizePipeline(object):
 
         self.parent_iterations = parent_iterations
         self.child_iterations = child_iterations
-        # for internal use, we keep child_iter for each estimator
+        # for internal use, we keep child_iter for each model
         self._child_iters = {model: child_iterations for model in self.models}
         self.parent_algorithm = parent_algorithm
         self.child_algorithm = child_algorithm
@@ -242,11 +242,11 @@ class OptimizePipeline(object):
         else:
             space = classification_space(num_samples=10)
 
-        # estimator_space contains just those models which are being considered
-        self.estimator_space = {}
+        # model_space contains just those models which are being considered
+        self.model_space = {}
         for mod, mod_sp in space.items():
             if mod in self.models:
-                self.estimator_space[mod] = mod_sp
+                self.model_space[mod] = mod_sp
 
         self._save_config()
 
@@ -257,8 +257,8 @@ class OptimizePipeline(object):
             'observations': {"test": None}
         }
 
-        self._optimize_estimator = True
-        self._estimator = None
+        self._optimize_model = True
+        self._model = None
 
     @property
     def outputs_to_transform(self):
@@ -335,14 +335,14 @@ class OptimizePipeline(object):
         -------
             >>> pl = OptimizePipeline(...)
             >>> rf_space = {'max_depth': [5,10, 15, 20],
-            >>>          'n_estimators': [5,10, 15, 20]}
+            >>>          'n_models': [5,10, 15, 20]}
             >>> pl.update_model_space({"RandomForestRegressor": rf_space})
         """
         for model, space in space.items():
-            if model not in self.estimator_space:
+            if model not in self.model_space:
                 raise ValueError(f"{model} is not valid because it is not being considered.")
             space = to_skopt_space(space)
-            self.estimator_space[model] = {'param_space': [s for s in space]}
+            self.model_space[model] = {'param_space': [s for s in space]}
         return
 
     def add_model(
@@ -367,22 +367,22 @@ class OptimizePipeline(object):
               consider using 'change_model_space' function.
               """
         for model_name, model_space in model.items():
-            assert model_name not in self.estimator_space, msg.format(model_name)
+            assert model_name not in self.model_space, msg.format(model_name)
             assert model_name not in self.models, msg.format(model_name)
             assert model_name not in self._child_iters, msg.format(model_name)
 
             model_space = to_skopt_space(model_space)
-            self.estimator_space[model_name] = {'param_space': model_space}
+            self.model_space[model_name] = {'param_space': model_space}
             self.models.append(model_name)
             self._child_iters[model_name] = self.child_iterations
 
         return
 
     def remove_model(self, models: Union[str, list]) -> None:
-        """removes a model from being considered. The follwoing attributes are
-         updated.
+        """removes an model/models from being considered. The follwoing
+        attributes are updated.
             - models
-            - estimator_space
+            - model_space
             - _child_iters
 
         Parameters
@@ -400,7 +400,7 @@ class OptimizePipeline(object):
 
         for model in models:
             self.models.remove(model)
-            self.estimator_space.pop(model)
+            self.model_space.pop(model)
             self._child_iters.pop(model)
 
         return
@@ -422,14 +422,14 @@ class OptimizePipeline(object):
         -------
             >>> pl = OptimizePipeline(...)
             >>> pl.change_child_iteration({"XGBRegressor": 10})
-            If we want to change iterations for more than one estimators
+            If we want to change iterations for more than one models
             >>> pl.change_child_iteration(({"XGBRegressor": 30,
             >>>                             "RandomForestRegressor": 20}))
         """
-        for model, _iter in model.items():
-            if model not in self._child_iters:
-                raise ValueError(f"{model} is not a valid model name")
-            self._child_iters[model] = _iter
+        for _model, _iter in model.items():
+            if _model not in self._child_iters:
+                raise ValueError(f"{_model} is not a valid model name")
+            self._child_iters[_model] = _iter
         return
 
     def space(self) -> list:
@@ -479,17 +479,17 @@ class OptimizePipeline(object):
                         append=append)
 
         if len(self.models)>1:
-            algos = Categorical(self.models, name="estimator")
+            algos = Categorical(self.models, name="model")
             sp = sp + [algos]
         else:
-            self._optimize_estimator = False
-            self._estimator = self.models[0]
+            self._optimize_model = False
+            self._model = self.models[0]
 
         return sp
 
     @property
     def max_child_iters(self) -> int:
-        # the number of child hpo iterations can be different based upon algorithm
+        # the number of child hpo iterations can be different based upon models
         # this property calculates maximum child iterations
         return max(self._child_iters.values())
 
@@ -585,23 +585,23 @@ class OptimizePipeline(object):
 
         # self.seed = np.random.randint(0, 10000, 1).item()
 
-        if self._optimize_estimator:
-            estimator = suggestions['estimator']
+        if self._optimize_model:
+            model = suggestions['model']
         else:
-            estimator = self._estimator
+            model = self._model
 
         x_trnas, y_trans = self._cook_transformations(suggestions)
 
-        # optimize the hyperparas of estimator using child objective
-        opt_paras = self.optimize_estimator_paras(
-            estimator,
+        # optimize the hyperparas of model using child objective
+        opt_paras = self.optimize_model_paras(
+            model,
             x_transformations=x_trnas,
             y_transformations=y_trans or None
         )
 
         # fit the model with optimized hyperparameters and suggested transformations
-        model = self._build_model(
-            model={estimator: opt_paras},
+        _model = self._build_model(
+            model={model: opt_paras},
             val_metric=self.eval_metric,
             x_transformation=x_trnas,
             y_transformation=y_trans,
@@ -612,15 +612,15 @@ class OptimizePipeline(object):
             # 'seed': self.seed,
             'x_transformation': x_trnas,
             'y_transformation': y_trans,
-            'model': {estimator: opt_paras},
+            'model': {model: opt_paras},
             'path': model.path
         }
 
-        val_score = self._fit_and_eval(model, self.cv_parent_hpo,
+        val_score = self._fit_and_eval(_model, self.cv_parent_hpo,
                                        self.eval_metric)
 
         # calculate all additional performance metrics which are being monitored
-        t, p = model.predict(data='validation', return_true=True,
+        t, p = _model.predict(data='validation', return_true=True,
                              process_results=False)
         errors = self.Metrics(t, p, remove_zero=True, remove_neg=True)
 
@@ -639,31 +639,31 @@ class OptimizePipeline(object):
 
         return val_score
 
-    def optimize_estimator_paras(
+    def optimize_model_paras(
             self,
-            estimator: str,
+            model: str,
             x_transformations: list,
             y_transformations: list
     ) -> dict:
-        """optimizes hyperparameters of an estimator"""
+        """optimizes hyperparameters of a model"""
 
         CHILD_PREFIX = f"{self.parent_iter_}_{dateandtime_now()}"
 
         def child_objective(**suggestions):
-            """objective function for optimization of estimator parameters"""
+            """objective function for optimization of model parameters"""
 
             self.child_iter_ += 1
 
             # build child model
-            model = self._build_model(
-                model={estimator: suggestions},
+            _model = self._build_model(
+                model={model: suggestions},
                 val_metric=self.eval_metric,
                 x_transformation=x_transformations,
                 y_transformation=y_transformations,
                 prefix=f"{self.parent_prefix}{SEP}{CHILD_PREFIX}",
             )
 
-            val_score = self._fit_and_eval(model, self.cv_child_hpo,
+            val_score = self._fit_and_eval(_model, self.cv_child_hpo,
                                            self.eval_metric)
 
             # populate all child val scores
@@ -672,13 +672,13 @@ class OptimizePipeline(object):
             return val_score
 
         # make space
-        child_space = self.estimator_space[estimator]['param_space']
+        child_space = self.model_space[model]['param_space']
         self.child_iter_ = 0  # before starting child hpo, reset iteration counter
 
         optimizer = HyperOpt(
             self.child_algorithm,
             objective_fn=child_objective,
-            num_iterations=self._child_iters[estimator],
+            num_iterations=self._child_iters[model],
             param_space=child_space,
             verbosity=0,
             process_results=False,
@@ -907,10 +907,10 @@ class OptimizePipeline(object):
         val_scores = {}
         metrics = {}
 
-        for estimator in self.models:
+        for _model in self.models:
             # build model
             model = self._build_model(
-                model=estimator,
+                model=_model,
                 val_metric=self.eval_metric,
                 prefix=f"{self.parent_prefix}{SEP}baselines",
                 x_transformation=None,
@@ -923,12 +923,12 @@ class OptimizePipeline(object):
 
             t, p = model.predict(return_true=True)
             errors = self.Metrics(t, p)
-            val_scores[estimator] = getattr(errors, self.eval_metric)()
+            val_scores[model] = getattr(errors, self.eval_metric)()
 
             _metrics = {}
             for m in self.metrics.keys():
                 _metrics[m] = getattr(errors, m)()
-            metrics[estimator] = _metrics
+            metrics[model] = _metrics
 
         results = {
             'val_scores': val_scores,
@@ -1535,7 +1535,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         self.dumbbell_plot(metric_name=self.eval_metric, show=show)
 
         # following plots only make sense if more than one models are tried
-        if self._optimize_estimator:
+        if self._optimize_model:
             self.taylor_plot(show=show)
             self.compare_models(show=show)
             self.compare_models(plot_type="bar_chart", show=show)

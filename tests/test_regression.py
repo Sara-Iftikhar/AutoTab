@@ -118,7 +118,7 @@ class TestRegression(unittest.TestCase):
         pl.remove_model("LinearRegression")
         assert "LinearRegression" not in pl.models
         assert "LinearRegression" not in pl._child_iters
-        assert "LinearRegression" not in pl.estimator_space
+        assert "LinearRegression" not in pl.model_space
         return
 
     def test_change_model_space(self):
@@ -128,7 +128,7 @@ class TestRegression(unittest.TestCase):
                  'n_estimators': [5,10, 15, 20]}
         pl.update_model_space({"RandomForestRegressor": space})
         pl.fit(data=data)
-        assert len(pl.estimator_space['RandomForestRegressor']['param_space'])==2
+        assert len(pl.model_space['RandomForestRegressor']['param_space'])==2
         return
 
     def test_baseline_results(self):
