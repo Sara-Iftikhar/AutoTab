@@ -14,68 +14,8 @@ warnings.warn = warn
 
 import matplotlib.pyplot as plt
 
-from ai4water.datasets import busan_beach
 
-from automl import OptimizePipeline
-
-
-inputs = ['tide_cm', 'wat_temp_c', 'sal_psu',
-          'pcp3_mm',  # 'pcp6_mm', 'pcp12_mm',
-          'pcp_mm', 'air_temp_c', 'rel_hum']
-
-data = busan_beach(inputs=inputs)
-
-
-def build_basic(parent_algorithm="random", child_algorithm="random",
-              parent_iterations=4, child_iterations=4,
-              eval_metric="mse",
-                models = None,
-              **kwargs
-              ):
-
-    pl = OptimizePipeline(
-        inputs_to_transform=inputs,
-        parent_iterations=parent_iterations,
-        child_iterations=child_iterations,
-        parent_algorithm=parent_algorithm,
-        child_algorithm=child_algorithm,
-        eval_metric=eval_metric,
-        monitor=['r2', 'nse'],
-        models=models or [
-            "LinearRegression",
-            "LassoLars",
-            "Lasso",
-            "RandomForestRegressor"
-        ],
-        input_features=data.columns.tolist()[0:-1],
-        output_features=data.columns.tolist()[-1:],
-        split_random=True,
-        train_fraction=1.0,
-        **kwargs
-    )
-
-
-    return pl
-
-
-def run_basic(**kwargs):
-
-    pl = build_basic(**kwargs)
-    results = pl.fit(
-        data=data
-    )
-
-    return pl
-
-
-class TestMetrics(unittest.TestCase):
-    """test different val_metrics for parent and child hpos"""
-    def test_r2_as_val_metric(self):
-
-        run_basic(eval_metric="r2",
-                  parent_iterations=10, child_iterations=25)
-
-        return
+from utils import run_basic, build_basic, data
 
 
 class TestRegression(unittest.TestCase):
@@ -175,7 +115,7 @@ class TestRegression(unittest.TestCase):
         pl = run_basic(parent_algorithm="bayes",
                             parent_iterations=12,
                             outputs_to_transform='tetx_coppml',
-                            output_transformations=output_transformations
+                            output_transformations=output_transformations,
                             )
 
         y_transformation = pl.parent_suggestions[1]['y_transformation'][0]['method']
@@ -185,23 +125,15 @@ class TestRegression(unittest.TestCase):
     def test_tpe(self):
         pl = run_basic(parent_algorithm="tpe",
         parent_iterations=12, eval_metric="nse",)
-        pl.post_fit()
+        pl.post_fit(show=False)
         pl.cleanup()
 
         return
 
     def test_single_model(self):
         pl = run_basic(models=["Lasso"])
-        pl.post_fit()
+        pl.post_fit(show=False)
         pl.cleanup()
-        return
-
-
-class TestRepeatition(unittest.TestCase):
-    """Should raise value error if some model is repeated"""
-    def test_model_names(self):
-        self.assertRaises(ValueError, build_basic,
-                          models=['Lasso', 'LassoLars', 'LassoCV', 'Lasso'])
         return
 
 

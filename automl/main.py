@@ -248,8 +248,6 @@ class OptimizePipeline(object):
             if mod in self.models:
                 self.model_space[mod] = mod_sp
 
-        self._save_config()
-
         # create container to store data for Taylor plot
         # It will be populated during postprocessing
         self.taylor_plot_inputs = {
@@ -495,9 +493,12 @@ class OptimizePipeline(object):
 
     def reset(self):
         # called at the start of fit method
+
+        self._save_config()  # will also make path if it does not already exists
+
         self.parent_iter_ = 0
         self.child_iter_ = 0
-        self.val_scores_ = OrderedDict()
+        self.val_scores_ = np.full(self.parent_iterations, np.nan)
 
         # each row indicates parent iteration, column indicates child iteration
         self.child_val_scores_ = np.full((self.parent_iterations,
@@ -613,7 +614,7 @@ class OptimizePipeline(object):
             'x_transformation': x_trnas,
             'y_transformation': y_trans,
             'model': {model: opt_paras},
-            'path': model.path
+            'path': _model.path
         }
 
         val_score = self._fit_and_eval(_model, self.cv_parent_hpo,
@@ -627,13 +628,15 @@ class OptimizePipeline(object):
         for k, v in self.metrics.items():
             v[self.parent_iter_] = getattr(errors, k)()
 
-        self.val_scores_[self.parent_iter_] = val_score
+        self.val_scores_[self.parent_iter_ - 1] = val_score  # -1 because array indexing starts from 0
+
+        _val_score = val_score if np.less_equal(val_score, np.nanmin(self.val_scores_[:self.parent_iter_ ])) else ''
 
         # print the merics being monitored
-        formatter = "{:<5} {:<18.3f} " + "{:<15.7f} " * (len(self.metrics))
+        formatter = "{:<5} {:<18.3} " + "{:<15.7f} " * (len(self.metrics))
         print(formatter.format(
             self.parent_iter_,
-            val_score,
+            _val_score,
             *[v[self.parent_iter_] for v in self.metrics.values()])
         )
 
@@ -923,12 +926,12 @@ class OptimizePipeline(object):
 
             t, p = model.predict(return_true=True)
             errors = self.Metrics(t, p)
-            val_scores[model] = getattr(errors, self.eval_metric)()
+            val_scores[_model] = getattr(errors, self.eval_metric)()
 
             _metrics = {}
             for m in self.metrics.keys():
                 _metrics[m] = getattr(errors, m)()
-            metrics[model] = _metrics
+            metrics[_model] = _metrics
 
         results = {
             'val_scores': val_scores,
@@ -1099,7 +1102,7 @@ class OptimizePipeline(object):
         # make a 2d array of all erros being monitored.
         errors = np.column_stack([list(v.values()) for v in self.metrics.values()])
         # add val_scores as new columns
-        errors = np.column_stack([errors, list(self.val_scores_.values())])
+        errors = np.column_stack([errors, self.val_scores_])
         # save the errors being monitored
         fpath = os.path.join(self.path, "errors.csv")
         pd.DataFrame(errors,
