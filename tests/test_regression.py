@@ -79,7 +79,7 @@ class TestRegression(unittest.TestCase):
         assert isinstance(metrics, dict)
         assert len(metrics) == 4
         for k,v in metrics.items():
-            assert len(v) == 2
+            assert len(v) == 3, f"key {k} val: {v}"
         return
 
     def test_dumbbell_plot(self):

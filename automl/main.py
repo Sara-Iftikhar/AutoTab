@@ -2,6 +2,7 @@
 import os
 import gc
 import json
+import sys
 import time
 import math
 import shutil
@@ -1201,6 +1202,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         versions['pandas'] = pd.__version__
         versions['matplotlib'] = matplotlib.__version__
         versions['sklearn'] = sklearn.__version__
+        versions['python'] = sys.version
 
         try:
             import xgboost
@@ -1416,6 +1418,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                                   val_metric=self.eval_metric)
 
         model.fit_on_all_training_data(data=self.data_)
+
+        model.dh_.to_disk(model.path)
 
         self._populate_results(model, model_name=model_name)
 

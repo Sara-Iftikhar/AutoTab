@@ -12,3 +12,4 @@ easy_mpl>=0.20.3
 
 xarray
 netcdf4
+h5py
