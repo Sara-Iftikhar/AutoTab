@@ -1,20 +1,44 @@
-# todos
+# automl
 
-## allow any external ML method which has fit and predict method to be used like following
+optimize pipeline for any machine learning mdoel using hierarchical optimization method
 
-- https://github.com/ankonzoid/LearningX/tree/master/advanced_ML/model_tree
-- https://github.com/smarie/python-m5p
-- https://github.com/cerlymarco/linear-tree
-- https://github.com/neurodata/SPORF
-- https://github.com/RomuloDrumond/LSSVM
+# Installation
 
+This package can be installed using pip from pypi using following command
 
-## preprocessing as part of model instead of model-agnostic
+    pip install automl
+    
+or using github link for the latest code
 
-## classification models
+	python -m pip install git+https://github.com/Sara-Iftikhar/automl.git
 
-## pyspark MLLib models should be used
+or using setup file, go to folder where repo is downloaded
 
-## organize/arrange results e.g. based upon model type
+    python setup.py install
 
-## decompositions such as pca/ica etc
+```python
+from ai4water.datasets import busan_beach
+
+from automl import OptimizePipeline
+
+data = busan_beach()
+
+pl = OptimizePipeline(
+    inputs_to_transform=data.columns.tolist()[0:-1],
+    parent_iterations=30,
+    child_iterations=12,
+    parent_algorithm='bayes',
+    child_algorithm='bayes',
+    eval_metric='mse',
+    monitor=['r2', 'nse'],
+
+    input_features=data.columns.tolist()[0:-1],
+    output_features=data.columns.tolist()[-1:],
+    split_random=True,
+    train_fraction=1.0,
+)
+
+pl.fit(data=data)
+
+pl.post_fit()
+```

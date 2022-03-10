@@ -971,6 +971,7 @@ class OptimizePipeline(object):
         -------
             matplotlib Axes
         """
+        metric_name = metric_name or self.eval_metric
 
         _, bl_results = self.baseline_results()
 

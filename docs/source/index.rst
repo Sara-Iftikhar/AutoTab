@@ -5,7 +5,10 @@
    :maxdepth: 2
    :caption: Contents:
 
+    auto_examples/index
+
 .. module:: automl
+
 
 OptimizePipeline
 ==================================
