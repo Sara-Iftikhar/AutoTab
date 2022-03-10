@@ -105,6 +105,8 @@ class TestRegression(unittest.TestCase):
             "RandomForestRegressor",
             "HistGradientBoostingRegressor",
         ])
+        ax = pl.compare_models('r2', "bar_chart", show=self.show)
+        assert isinstance(ax, plt.Axes)
         ax = pl.compare_models('r2', show=self.show)
         assert isinstance(ax, plt.Axes)
         pl.cleanup()

@@ -1623,15 +1623,25 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             except ModelNotUsedError:
                 continue
 
+        labels = []
+
+        for label in models.keys():
+            if label.endswith('Regressor'):
+                label = label.replace('Regressor', '')
+            elif label.endswith('Classifier'):
+                label = label.replace('Classifier', '')
+            labels.append(label)
+
+        plt.close('all')
         if plot_type == "circular":
-            ax = circular_bar_plot(np.array(list(models.values())),
-                                   list(models.keys()),
+            ax = circular_bar_plot(list(models.values()),
+                                   labels,
                                    sort=True,
                                    show=False,
                                    **kwargs)
         else:
             ax = bar_chart(list(models.values()),
-                           list(models.keys()),
+                           labels,
                            sort=True,
                            show=False,
                            **kwargs)
