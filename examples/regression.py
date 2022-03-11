@@ -13,10 +13,10 @@ data = busan_beach()
 pl = OptimizePipeline(
     inputs_to_transform=data.columns.tolist()[0:-1],
     parent_iterations=30,
-    child_iterations=12,
+    child_iterations=5,
     parent_algorithm='bayes',
-    child_algorithm='bayes',
-    eval_metric='mse',
+    child_algorithm='random',
+    eval_metric='r2_score',
     monitor=['r2', 'nse'],
     models=[ "LinearRegression",
             "LassoLars",
@@ -61,3 +61,7 @@ pl.compare_models()
 ##############################################
 
 pl.compare_models(plot_type="bar_chart")
+
+#################################################
+
+pl.cleanup()

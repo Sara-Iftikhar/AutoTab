@@ -23,7 +23,7 @@ copyright = '2022, Sara Iftikhar'
 author = 'Sara Iftikhar'
 
 # The full version, including alpha/beta/rc tags
-release = '0.01'
+release = '0.1'
 
 
 # -- General configuration ---------------------------------------------------
@@ -32,7 +32,6 @@ release = '0.01'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-'rinoh.frontend.sphinx',
 'sphinx.ext.todo',
 'sphinx.ext.viewcode', 
 'sphinx.ext.autodoc',

@@ -1,14 +1,2 @@
-ai4water>=1.0b5
-numpy
-pandas
-scikit-optimize
-scikit-learn
-lightgbm
-xgboost
-catboost
-hyperopt
-optuna
-matplotlib
-easy_mpl>=0.20.4
-SeqMetrics
+ai4water[ml_hpo]>=1.0b5
 h5py

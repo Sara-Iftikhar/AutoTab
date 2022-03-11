@@ -1,4 +1,4 @@
-ai4water>=1.0b5
+ai4water[ml_hpo]>=1.0b5
 sphinx
 rinohtype
 sphinx_issues

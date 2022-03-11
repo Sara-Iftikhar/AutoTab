@@ -378,8 +378,10 @@ class OptimizePipeline(object):
         return
 
     def remove_model(self, models: Union[str, list]) -> None:
-        """removes an model/models from being considered. The follwoing
+        """
+        removes an model/models from being considered. The follwoing
         attributes are updated.
+
             - models
             - model_space
             - _child_iters
@@ -738,7 +740,7 @@ class OptimizePipeline(object):
             x_transformation,
             y_transformation,
             prefix: Union[str, None]
-    ) -> "Model":
+    ) -> Model:
         """build the ai4water Model. When overwriting this method, the user
         must return an instance of ai4water's Model_ class.
 
@@ -843,7 +845,8 @@ class OptimizePipeline(object):
         performance metric. The metric must be recorded i.e. must be given as
         `monitor` argument.
 
-        Arguments:
+        Parameters
+        ----------
             model_name:
                 The name of model for which best pipeline is to be found. The `best`
                 is defined by ``metric_name``.
@@ -851,12 +854,15 @@ class OptimizePipeline(object):
                 The name of metric with respect to which the best model is to
                 be retrieved. If not given, the best model is defined by the
                 evaluation metric.
-        Returns:
+
+        Returns
+        -------
             a tuple of length two
 
             - first value is a float which represents the value of
-            metric
+                metric
             - second value is a dictionary of pipeline with four keys
+
                 x_transformation
                 y_transformation
                 model
@@ -1635,7 +1641,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         plt.close('all')
         if plot_type == "circular":
-            ax = circular_bar_plot(list(models.values()),
+            ax = circular_bar_plot(np.array(list(models.values())),
                                    labels,
                                    sort=True,
                                    show=False,
