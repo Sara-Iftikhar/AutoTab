@@ -19,7 +19,6 @@ from easy_mpl import dumbbell_plot, taylor_plot, circular_bar_plot, bar_chart
 import ai4water
 from ai4water import Model
 from ai4water._optimize import make_space
-from ai4water.utils.utils import MATRIC_TYPES
 from ai4water.hyperopt.utils import to_skopt_space
 from ai4water.utils.utils import dateandtime_now, jsonize
 from ai4water.hyperopt import Categorical, HyperOpt, Integer
@@ -33,6 +32,43 @@ DEFAULT_TRANSFORMATIONS = [
     "quantile", "robust", "log", "log2", "log10", "sqrt", "none",
               ]
 DEFAULT_Y_TRANFORMATIONS = ["log", "log2", "log10", "sqrt", "none"]
+
+METRIC_TYPES = {
+    "r2": "max",
+    "nse": "max",
+    "r2_score": "max",
+    "kge": "max",
+    'log_nse': 'max',
+    "corr_coeff": "max",
+    'accuracy': "max",
+    'f1_score': 'max',
+    "mse": "min",
+    "rmse": "min",
+    "rmsle": "min",
+    "mape": "min",
+    "nrmse": "min",
+    "pbias": "min",
+    "bias": "min",
+}
+
+def compare_func(metric_type:str):
+    if metric_type == "min":
+        return np.less_equal
+    return np.greater_equal
+
+
+def compare_func1(metric_type:str):
+    if metric_type == "min":
+        return np.nanmin
+    return np.nanmax
+
+
+def fill_val(metric_type:str, best_so_far):
+    if math.isfinite(best_so_far):
+        return best_so_far
+    if metric_type == "min":
+        return 99999999999999
+    return -9999999999
 
 
 class OptimizePipeline(object):
@@ -503,6 +539,9 @@ class OptimizePipeline(object):
         self.child_iter_ = 0
         self.val_scores_ = np.full(self.parent_iterations, np.nan)
 
+        metrics_best = np.full((self.parent_iterations, len(self.metrics)), np.nan)
+        self.metrics_best = pd.DataFrame(metrics_best, columns=list(self.metrics.keys()))
+
         # each row indicates parent iteration, column indicates child iteration
         self.child_val_scores_ = np.full((self.parent_iterations,
                                           self.max_child_iters),
@@ -609,7 +648,7 @@ class OptimizePipeline(object):
             val_metric=self.eval_metric,
             x_transformation=x_trnas,
             y_transformation=y_trans,
-            prefix=self.parent_prefix,
+            prefix=f"{self.parent_prefix}{SEP}{self.CHILD_PREFIX}",
         )
 
         self.parent_suggestions[self.parent_iter_] = {
@@ -629,18 +668,30 @@ class OptimizePipeline(object):
         errors = self.Metrics(t, p, remove_zero=True, remove_neg=True)
 
         for k, v in self.metrics.items():
-            v[self.parent_iter_] = getattr(errors, k)()
+            pm = getattr(errors, k)()
+            v[self.parent_iter_] = pm
+
+            func = compare_func1(METRIC_TYPES[k])
+            best_so_far = func(self.metrics_best.loc[:self.parent_iter_, k])
+
+            best_so_far = fill_val(METRIC_TYPES[k], best_so_far)
+
+            func = compare_func(METRIC_TYPES[k])
+            if func(pm, best_so_far):
+
+                self.metrics_best.loc[self.parent_iter_-1, k] = pm
 
         self.val_scores_[self.parent_iter_ - 1] = val_score  # -1 because array indexing starts from 0
 
         _val_score = val_score if np.less_equal(val_score, np.nanmin(self.val_scores_[:self.parent_iter_ ])) else ''
 
         # print the merics being monitored
-        formatter = "{:<5} {:<18.3} " + "{:<15.7f} " * (len(self.metrics))
+        # we fill the nan in metrics_best with '' so that it does not gen printed
+        formatter = "{:<5} {:<18.3} " + "{:<15.7} " * (len(self.metrics))
         print(formatter.format(
             self.parent_iter_,
             _val_score,
-            *[v[self.parent_iter_] for v in self.metrics.values()])
+            *self.metrics_best.loc[self.parent_iter_-1].fillna('').values.tolist())
         )
 
         return val_score
@@ -653,7 +704,7 @@ class OptimizePipeline(object):
     ) -> dict:
         """optimizes hyperparameters of a model"""
 
-        CHILD_PREFIX = f"{self.parent_iter_}_{dateandtime_now()}"
+        self.CHILD_PREFIX = f"{self.parent_iter_}_{dateandtime_now()}"
 
         def child_objective(**suggestions):
             """objective function for optimization of model parameters"""
@@ -666,7 +717,7 @@ class OptimizePipeline(object):
                 val_metric=self.eval_metric,
                 x_transformation=x_transformations,
                 y_transformation=y_transformations,
-                prefix=f"{self.parent_prefix}{SEP}{CHILD_PREFIX}",
+                prefix=f"{self.parent_prefix}{SEP}{self.CHILD_PREFIX}",
             )
 
             val_score = self._fit_and_eval(_model, self.cv_child_hpo,
@@ -688,7 +739,7 @@ class OptimizePipeline(object):
             param_space=child_space,
             verbosity=0,
             process_results=False,
-            opt_path=os.path.join(self.path, CHILD_PREFIX),
+            opt_path=os.path.join(self.path, self.CHILD_PREFIX),
         )
 
         optimizer.fit()
@@ -781,7 +832,7 @@ class OptimizePipeline(object):
         if metric_name not in self.metrics:
             raise MetricNotMonitored(metric_name, list(self.metrics.keys()))
 
-        if MATRIC_TYPES[metric_name] == "min":
+        if METRIC_TYPES[metric_name] == "min":
             return np.nanmin(list(self.metrics[metric_name].values())).item()
         else:
             return np.nanmax(list(self.metrics[metric_name].values())).item()
@@ -803,7 +854,7 @@ class OptimizePipeline(object):
         if metric_name not in self.metrics:
             raise MetricNotMonitored(metric_name, list(self.metrics.keys()))
 
-        if MATRIC_TYPES[metric_name] == "min":
+        if METRIC_TYPES[metric_name] == "min":
             idx = np.nanargmin(list(self.metrics[metric_name].values()))
         else:
             idx = np.nanargmax(list(self.metrics[metric_name].values()))

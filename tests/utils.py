@@ -47,7 +47,7 @@ def build_basic(parent_algorithm="random", child_algorithm="random",
 def run_basic(**kwargs):
 
     pl = build_basic(**kwargs)
-    results = pl.fit(
+    pl.fit(
         data=data
     )
 

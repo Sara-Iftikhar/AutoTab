@@ -60,6 +60,8 @@ class TestMLRegression(unittest.TestCase):
         val_score = pl._evaluate_model(model, 'r2_score', data='validation')
 
         self.assertAlmostEqual(val_score + best_val, 1.0, places=5)
+
+        pl.cleanup()
         return
 
 

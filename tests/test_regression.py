@@ -20,7 +20,7 @@ from utils import run_basic, build_basic, data
 
 class TestRegression(unittest.TestCase):
 
-    show = True
+    show = False
 
     def test_basic(self):
         pl = run_basic()
@@ -42,6 +42,7 @@ class TestRegression(unittest.TestCase):
         assert isinstance(best_pl, dict)
         for k in ['x_transformation', 'y_transformation', 'model', 'path']:
             assert k in best_pipeline
+        pl.cleanup()
         return
 
     def test_change_child_iter(self):
@@ -50,6 +51,7 @@ class TestRegression(unittest.TestCase):
         pl.change_child_iteration({"RandomForestRegressor": 10})
         pl.fit(data=data)
         assert pl.child_val_scores_.shape[1] == 10
+        pl.cleanup()
         return
 
     def test_remove_model(self):
@@ -80,6 +82,7 @@ class TestRegression(unittest.TestCase):
         assert len(metrics) == 4
         for k,v in metrics.items():
             assert len(v) == 3, f"key {k} val: {v}"
+        pl.cleanup()
         return
 
     def test_dumbbell_plot(self):
@@ -122,6 +125,7 @@ class TestRegression(unittest.TestCase):
 
         y_transformation = pl.parent_suggestions[1]['y_transformation'][0]['method']
         assert y_transformation in output_transformations
+        pl.cleanup()
         return
 
     def test_tpe(self):

@@ -1,4 +1,4 @@
 
-from .main import OptimizePipeline
+from ._main import OptimizePipeline
 
 __version__ = "0.1"
