@@ -82,9 +82,9 @@ class OptimizePipeline(object):
     Attributes
     -----------
 
-    - metrics
+    - metrics_
 
-    - parent_suggestions:
+    - parent_suggestions_:
         an ordered dictionary of suggestions to the parent objective function
         during parent hpo loop
 
@@ -258,7 +258,6 @@ class OptimizePipeline(object):
             else:
                 monitor = ['accuracy']
 
-        self.monitor = monitor
         if isinstance(monitor, str):
             monitor = [monitor]
 
@@ -267,12 +266,7 @@ class OptimizePipeline(object):
             monitor.append(eval_metric)
 
         assert isinstance(monitor, list)
-
-        self.metrics = {metric: OrderedDict() for metric in monitor}
-
-        self.parent_suggestions = OrderedDict()
-
-        self.parent_prefix = prefix or f"pipeline_opt_{dateandtime_now()}"
+        self.monitor = monitor
 
         if self.mode == "regression":
             space = regression_space(num_samples=10)
@@ -284,13 +278,6 @@ class OptimizePipeline(object):
         for mod, mod_sp in space.items():
             if mod in self.models:
                 self.model_space[mod] = mod_sp
-
-        # create container to store data for Taylor plot
-        # It will be populated during postprocessing
-        self.taylor_plot_inputs = {
-            'simulations': {"test": {}},
-            'observations': {"test": None}
-        }
 
         self._optimize_model = True
         self._model = None
@@ -311,7 +298,7 @@ class OptimizePipeline(object):
 
     @property
     def path(self):
-        _path = os.path.join(os.getcwd(), "results", self.parent_prefix)
+        _path = os.path.join(os.getcwd(), "results", self.parent_prefix_)
         if not os.path.exists(_path):
             os.makedirs(_path)
         return _path
@@ -533,14 +520,14 @@ class OptimizePipeline(object):
     def reset(self):
         # called at the start of fit method
 
-        self._save_config()  # will also make path if it does not already exists
+        self.metrics_ = {metric: OrderedDict() for metric in self.monitor}
 
         self.parent_iter_ = 0
         self.child_iter_ = 0
         self.val_scores_ = np.full(self.parent_iterations, np.nan)
 
-        metrics_best = np.full((self.parent_iterations, len(self.metrics)), np.nan)
-        self.metrics_best = pd.DataFrame(metrics_best, columns=list(self.metrics.keys()))
+        metrics_best = np.full((self.parent_iterations, len(self.metrics_)), np.nan)
+        self.metrics_best_ = pd.DataFrame(metrics_best, columns=list(self.metrics_.keys()))
 
         # each row indicates parent iteration, column indicates child iteration
         self.child_val_scores_ = np.full((self.parent_iterations,
@@ -548,16 +535,29 @@ class OptimizePipeline(object):
                                          np.nan)
         self.start_time_ = time.asctime()
 
+        self.parent_suggestions_ = OrderedDict()
+
+        # create container to store data for Taylor plot
+        # It will be populated during postprocessing
+        self.taylor_plot_inputs_ = {
+            'simulations': {"test": {}},
+            'observations': {"test": None}
+        }
+
+        self.parent_prefix_ = f"pipeline_opt_{dateandtime_now()}"
+
+        self._save_config()  # will also make path if it does not already exists
+
         self._print_header()
         return
 
     def _print_header(self):
         # prints the first line on console
-        formatter = "{:<5} {:<18} " + "{:<15} " * (len(self.metrics))
+        formatter = "{:<5} {:<18} " + "{:<15} " * (len(self.metrics_))
         print(formatter.format(
             "Iter",
             self.eval_metric,
-            *[k for k in self.metrics.keys()])
+            *[k for k in self.metrics_.keys()])
         )
 
         return
@@ -648,10 +648,10 @@ class OptimizePipeline(object):
             val_metric=self.eval_metric,
             x_transformation=x_trnas,
             y_transformation=y_trans,
-            prefix=f"{self.parent_prefix}{SEP}{self.CHILD_PREFIX}",
+            prefix=f"{self.parent_prefix_}{SEP}{self.CHILD_PREFIX}",
         )
 
-        self.parent_suggestions[self.parent_iter_] = {
+        self.parent_suggestions_[self.parent_iter_] = {
             # 'seed': self.seed,
             'x_transformation': x_trnas,
             'y_transformation': y_trans,
@@ -667,31 +667,31 @@ class OptimizePipeline(object):
                              process_results=False)
         errors = self.Metrics(t, p, remove_zero=True, remove_neg=True)
 
-        for k, v in self.metrics.items():
+        for k, v in self.metrics_.items():
             pm = getattr(errors, k)()
             v[self.parent_iter_] = pm
 
             func = compare_func1(METRIC_TYPES[k])
-            best_so_far = func(self.metrics_best.loc[:self.parent_iter_, k])
+            best_so_far = func(self.metrics_best_.loc[:self.parent_iter_, k])
 
             best_so_far = fill_val(METRIC_TYPES[k], best_so_far)
 
             func = compare_func(METRIC_TYPES[k])
             if func(pm, best_so_far):
 
-                self.metrics_best.loc[self.parent_iter_-1, k] = pm
+                self.metrics_best_.loc[self.parent_iter_-1, k] = pm
 
         self.val_scores_[self.parent_iter_ - 1] = val_score  # -1 because array indexing starts from 0
 
         _val_score = val_score if np.less_equal(val_score, np.nanmin(self.val_scores_[:self.parent_iter_ ])) else ''
 
         # print the merics being monitored
-        # we fill the nan in metrics_best with '' so that it does not gen printed
-        formatter = "{:<5} {:<18.3} " + "{:<15.7} " * (len(self.metrics))
+        # we fill the nan in metrics_best_ with '' so that it does not gen printed
+        formatter = "{:<5} {:<18.3} " + "{:<15.7} " * (len(self.metrics_))
         print(formatter.format(
             self.parent_iter_,
             _val_score,
-            *self.metrics_best.loc[self.parent_iter_-1].fillna('').values.tolist())
+            *self.metrics_best_.loc[self.parent_iter_-1].fillna('').values.tolist())
         )
 
         return val_score
@@ -717,7 +717,7 @@ class OptimizePipeline(object):
                 val_metric=self.eval_metric,
                 x_transformation=x_transformations,
                 y_transformation=y_transformations,
-                prefix=f"{self.parent_prefix}{SEP}{self.CHILD_PREFIX}",
+                prefix=f"{self.parent_prefix_}{SEP}{self.CHILD_PREFIX}",
             )
 
             val_score = self._fit_and_eval(_model, self.cv_child_hpo,
@@ -829,13 +829,13 @@ class OptimizePipeline(object):
         """returns the best value of a particular performance metric.
         The metric must be recorded i.e. must be given as `monitor` argument.
         """
-        if metric_name not in self.metrics:
-            raise MetricNotMonitored(metric_name, list(self.metrics.keys()))
+        if metric_name not in self.metrics_:
+            raise MetricNotMonitored(metric_name, list(self.metrics_.keys()))
 
         if METRIC_TYPES[metric_name] == "min":
-            return np.nanmin(list(self.metrics[metric_name].values())).item()
+            return np.nanmin(list(self.metrics_[metric_name].values())).item()
         else:
-            return np.nanmax(list(self.metrics[metric_name].values())).item()
+            return np.nanmax(list(self.metrics_[metric_name].values())).item()
 
     def get_best_metric_iteration(
             self,
@@ -851,13 +851,13 @@ class OptimizePipeline(object):
 
         metric_name = metric_name or self.eval_metric
 
-        if metric_name not in self.metrics:
-            raise MetricNotMonitored(metric_name, list(self.metrics.keys()))
+        if metric_name not in self.metrics_:
+            raise MetricNotMonitored(metric_name, list(self.metrics_.keys()))
 
         if METRIC_TYPES[metric_name] == "min":
-            idx = np.nanargmin(list(self.metrics[metric_name].values()))
+            idx = np.nanargmin(list(self.metrics_[metric_name].values()))
         else:
-            idx = np.nanargmax(list(self.metrics[metric_name].values()))
+            idx = np.nanargmax(list(self.metrics_[metric_name].values()))
 
         return int(idx + 1)
 
@@ -885,7 +885,7 @@ class OptimizePipeline(object):
 
         idx = self.get_best_metric_iteration(metric_name)
 
-        return self.parent_suggestions[idx]
+        return self.parent_suggestions_[idx]
 
     def get_best_pipeline_by_model(
             self,
@@ -923,13 +923,13 @@ class OptimizePipeline(object):
         metric_name = metric_name or self.eval_metric
 
         # checks if the given metric is a valid metric or not
-        if metric_name not in self.metrics:
-            raise MetricNotMonitored(metric_name, self.metrics.keys())
+        if metric_name not in self.metrics_:
+            raise MetricNotMonitored(metric_name, self.metrics_.keys())
 
         # initialize an empty dictionary to store model parameters
         model_container = {}
 
-        for iter_num, iter_suggestions in self.parent_suggestions.items():
+        for iter_num, iter_suggestions in self.parent_suggestions_.items():
             # iter_suggestion is a dictionary and it contains four keys
             model = iter_suggestions['model']
             # model is dictionary, whose key is the model_name and values
@@ -937,7 +937,7 @@ class OptimizePipeline(object):
 
             if model_name in model:
                 # find out the metric value at iter_num
-                metric_val = self.metrics[metric_name][iter_num]
+                metric_val = self.metrics_[metric_name][iter_num]
                 metric_val = round(metric_val, 4)
 
                 model_container[metric_val] = iter_suggestions
@@ -973,7 +973,7 @@ class OptimizePipeline(object):
             model = self._build_model(
                 model=_model,
                 val_metric=self.eval_metric,
-                prefix=f"{self.parent_prefix}{SEP}baselines",
+                prefix=f"{self.parent_prefix_}{SEP}baselines",
                 x_transformation=None,
                 y_transformation=None
             )
@@ -987,7 +987,7 @@ class OptimizePipeline(object):
             val_scores[_model] = getattr(errors, self.eval_metric)()
 
             _metrics = {}
-            for m in self.metrics.keys():
+            for m in self.metrics_.keys():
                 _metrics[m] = getattr(errors, m)()
             metrics[_model] = _metrics
 
@@ -1122,7 +1122,7 @@ class OptimizePipeline(object):
             https://github.com/Sara-Iftikhar/easy_mpl#taylor_plot
         """
 
-        if self.taylor_plot_inputs['observations']['test'] is None:
+        if self.taylor_plot_inputs_['observations']['test'] is None:
             self.bfe_all_best_models()
 
         ax = taylor_plot(
@@ -1132,7 +1132,7 @@ class OptimizePipeline(object):
             cont_kws={},
             grid_kws={},
             figsize=figsize,
-            **self.taylor_plot_inputs,  # simulations and trues as keyword arguments
+            **self.taylor_plot_inputs_,  # simulations and trues as keyword arguments
             **kwargs
         )
         fname = os.path.join(self.path, "taylor_plot")
@@ -1144,10 +1144,10 @@ class OptimizePipeline(object):
             plt.show()
 
         # save taylor plot data as csv file, first make a dataframe
-        sim = self.taylor_plot_inputs['simulations']['test']
+        sim = self.taylor_plot_inputs_['simulations']['test']
         data = np.column_stack([v.reshape(-1, ) for v in sim.values()])
         df = pd.DataFrame(data, columns=list(sim.keys()))
-        df['observations'] = self.taylor_plot_inputs['observations']['test']
+        df['observations'] = self.taylor_plot_inputs_['observations']['test']
 
         df.to_csv(os.path.join(self.path, "taylor_data.csv"))
 
@@ -1159,13 +1159,13 @@ class OptimizePipeline(object):
         self.end_time_ = time.asctime()
 
         # make a 2d array of all erros being monitored.
-        errors = np.column_stack([list(v.values()) for v in self.metrics.values()])
+        errors = np.column_stack([list(v.values()) for v in self.metrics_.values()])
         # add val_scores as new columns
         errors = np.column_stack([errors, self.val_scores_])
         # save the errors being monitored
         fpath = os.path.join(self.path, "errors.csv")
         pd.DataFrame(errors,
-                     columns=list(self.metrics.keys()) + ['val_scores']
+                     columns=list(self.metrics_.keys()) + ['val_scores']
                      ).to_csv(fpath)
 
         # save results of child iterations as csv file
@@ -1207,7 +1207,7 @@ completing {self.parent_iter_} iterations. The optimization considered {num_mode
             text += f"""
 The given parent iterations were {self.parent_iterations} but optimization stopped early"""
 
-        for metric in self.metrics.keys():
+        for metric in self.metrics_.keys():
             text += self.metric_report(metric)
 
         if write:
@@ -1326,6 +1326,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         model_kwargs = config['init_paras'].pop('model_kwargs')
 
+        cls.start_time_ = ""
+
         return cls(**config['init_paras'], **model_kwargs)
 
     @classmethod
@@ -1400,7 +1402,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         -------
             an instance of trained ai4water Model
         """
-        pipeline = self.parent_suggestions[iter_num]
+        pipeline = self.parent_suggestions_[iter_num]
         prefix = f"{self.path}{SEP}results_from_scratch{SEP}iteration_{iter_num}"
 
         model = self._build_and_eval_from_scratch(
@@ -1418,7 +1420,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
     ):
         """Builds, Trains and Evaluates the best model with respect to metric from
         scratch. The model is trained on 'training'+'validation' data. Running
-        this mothod will also populate ``taylor_plot_inputs`` dictionary.
+        this mothod will also populate ``taylor_plot_inputs_`` dictionary.
 
         Parameters
         ----------
@@ -1467,7 +1469,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             model_name=None,
     ) -> "Model":
         """builds and evaluates the model from scratch. If model_name is given,
-        model's predictions are saved in 'taylor_plot_inputs' dictionary
+        model's predictions are saved in 'taylor_plot_inputs_' dictionary
         """
         model = self._build_model(model=model,
                                   x_transformation=x_transformation,
@@ -1489,7 +1491,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             model_name=None
     ) -> None:
         """evaluates/makes predictions from model on traiing/validation/test data.
-        if model_name is given, model's predictions are saved in 'taylor_plot_inputs'
+        if model_name is given, model's predictions are saved in 'taylor_plot_inputs_'
         dictionary
         """
         model.predict(data='training', metrics="all")
@@ -1497,8 +1499,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         t, p = model.predict(data='test', metrics="all", return_true=True)
 
         if model_name:
-            self.taylor_plot_inputs['observations']['test'] = t
-            self.taylor_plot_inputs['simulations']['test'][model_name] = p
+            self.taylor_plot_inputs_['observations']['test'] = t
+            self.taylor_plot_inputs_['simulations']['test'][model_name] = p
 
         return
 
@@ -1725,7 +1727,7 @@ def eval_model_manually(model, metric: str, Metrics) -> float:
     errors = Metrics(t, p, remove_zero=True, remove_neg=True)
     val_score = getattr(errors, metric)()
 
-    metric_type = MATRIC_TYPES.get(metric, 'min')
+    metric_type = METRIC_TYPES.get(metric, 'min')
 
     # the optimization will always solve minimization problem so if
     # the metric is to be maximized change the val_score accordingly
