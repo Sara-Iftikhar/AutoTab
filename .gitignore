@@ -20,11 +20,17 @@ paper/
 
 dist/
 
+build/
+
 # docs
 site/
 docs/source/auto_examples/
 docs/source/gen_modules/
+docs/build/
+docs/_build/
 
+
+automl.egg-info
 
 # run time junk
 examples/.jovianrc

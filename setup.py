@@ -37,6 +37,7 @@ setup(
         'Operating System :: POSIX :: Linux',
 
         'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
@@ -45,7 +46,10 @@ setup(
     packages=['automl'],
 
     install_requires=[
-        'ai4water[ml_hpo]',
+        #'ai4water[ml_hpo]>=1.0b6',
         'h5py',
     ],
+    extras_require={
+        'all': ["ai4water[ml_hpo]>=1.0b6", "h5py"],
+    }
 )

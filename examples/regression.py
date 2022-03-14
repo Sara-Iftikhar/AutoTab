@@ -5,7 +5,7 @@ regression
 """
 
 from ai4water.datasets import busan_beach
-
+from skopt.plots import plot_objective
 from automl import OptimizePipeline
 
 data = busan_beach()
@@ -37,7 +37,36 @@ pl = OptimizePipeline(
     train_fraction=1.0,
 )
 
-pl.fit(data=data)
+results = pl.fit(data=data)
+
+##############################################
+
+pl.optimizer._plot_convergence(save=False)
+
+##############################################
+
+pl.optimizer._plot_parallel_coords(figsize=(16, 8), save=False)
+
+##############################################
+
+pl.optimizer._plot_distributions(save=False)
+
+##############################################3
+
+pl.optimizer.plot_importance(save=False)
+
+###########################################
+
+_ = plot_objective(results)
+
+###########################################
+
+pl.optimizer._plot_evaluations(save=False)
+
+
+###########################################
+
+pl.optimizer._plot_edf(save=False)
 
 ##############################################
 
