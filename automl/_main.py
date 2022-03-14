@@ -1158,6 +1158,11 @@ class OptimizePipeline(object):
         """
         self.end_time_ = time.asctime()
 
+        # save parent_suggestions
+        parent_suggestions = jsonize(self.parent_suggestions_)
+        with open(os.path.join(self.path, "parent_suggestions.json"), "w") as fp:
+            json.dump(parent_suggestions, fp)
+
         # make a 2d array of all erros being monitored.
         errors = np.column_stack([list(v.values()) for v in self.metrics_.values()])
         # add val_scores as new columns
@@ -1326,7 +1331,21 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         model_kwargs = config['init_paras'].pop('model_kwargs')
 
-        cls.start_time_ = ""
+        cls.start_time_ = config['runtime_attrs']
+
+        path = os.path.dirname(config_file)
+        fpath = os.path.join(path, "parent_suggestions.json")
+        if os.path.exists(fpath):
+            with open(fpath, "r") as fp:
+                parent_suggestions = json.load(fp)
+
+            cls.parent_suggestions_ = parent_suggestions
+            cls.parent_iter_ = len(parent_suggestions)
+
+        fpath = os.path.join(path, "errors.csv")
+        if os.path.exists(fpath):
+            errors = pd.read_csv(fpath)
+            cls.metrics_ = errors.to_dict()
 
         return cls(**config['init_paras'], **model_kwargs)
 
@@ -1440,8 +1459,9 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         metric_name = metric_name or self.eval_metric
 
         if model_name:
-            pipeline, met_val = self.get_best_pipeline_by_model(model_name,
-                                                                metric_name)
+            met_val, pipeline = self.get_best_pipeline_by_model(
+                model_name,
+                metric_name)
         else:
             met_val = self.get_best_metric(metric_name)
             pipeline = self.get_best_pipeline_by_metric(metric_name=metric_name)
@@ -1573,11 +1593,11 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         for model in self.models:
 
             try:
-                _, pipeline = self.get_best_pipeline_by_model(model, met_name)
+                metric_val, pipeline = self.get_best_pipeline_by_model(model, met_name)
             except ModelNotUsedError:
                 continue
 
-            prefix = f"{self.path}{SEP}results_from_scratch{SEP}{met_name}_{model}"
+            prefix = f"{self.path}{SEP}results_from_scratch{SEP}{met_name}_{metric_val}_{model}"
 
             _ = self._build_and_eval_from_scratch(
                 model=pipeline['model'],

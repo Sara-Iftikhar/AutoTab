@@ -75,6 +75,7 @@ class TestRegression(unittest.TestCase):
 
     def test_baseline_results(self):
         pl = build_basic()
+        pl.reset()
         val_scores, metrics = pl.baseline_results(data=data)
         assert isinstance(val_scores, dict)
         assert len(val_scores) == 4
@@ -123,7 +124,7 @@ class TestRegression(unittest.TestCase):
                             output_transformations=output_transformations,
                             )
 
-        y_transformation = pl.parent_suggestions[1]['y_transformation'][0]['method']
+        y_transformation = pl.parent_suggestions_[1]['y_transformation'][0]['method']
         assert y_transformation in output_transformations
         pl.cleanup()
         return
