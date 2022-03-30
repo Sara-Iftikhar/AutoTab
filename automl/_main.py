@@ -49,6 +49,7 @@ METRIC_TYPES = {
     "nrmse": "min",
     "pbias": "min",
     "bias": "min",
+    "med_seq_error": "min",
 }
 
 def compare_func(metric_type:str):
@@ -114,7 +115,7 @@ class OptimizePipeline(object):
 
     Note
     -----
-    This optimizationa always sovlves a minimization problem even if the val_metric
+    This optimizationa always solves a minimization problem even if the val_metric
     is r2.
     """
 
@@ -187,7 +188,10 @@ class OptimizePipeline(object):
             parent_iterations : int, optional
                 Number of iterations for parent optimization loop
             child_iterations : int, optional
-                Number of iterations for child optimization loop
+                Number of iterations for child optimization loop. It set to 0,
+                the child hpo loop is not run which means the hyperparameters
+                of the model are not optimized. You can customize iterations for
+                each model by making using of :meth: `change_child_iterations` method.
             parent_algorithm : str, optional
                 Algorithm for optimization of parent optimzation
             child_algorithm : str, optional
@@ -499,7 +503,7 @@ class OptimizePipeline(object):
                 y_categories = list(self.output_transformations.values())
 
         sp = make_space(self.inputs_to_transform + (self.outputs_to_transform or []),
-                        categories=set(x_categories + y_categories),
+                        categories=list(set(x_categories + y_categories)),
                         append=append)
 
         if len(self.models)>1:
@@ -626,6 +630,7 @@ class OptimizePipeline(object):
 
         self.parent_iter_ += 1
 
+        self.CHILD_PREFIX = f"{self.parent_iter_}_{dateandtime_now()}"
         # self.seed = np.random.randint(0, 10000, 1).item()
 
         if self._optimize_model:
@@ -635,12 +640,15 @@ class OptimizePipeline(object):
 
         x_trnas, y_trans = self._cook_transformations(suggestions)
 
-        # optimize the hyperparas of model using child objective
-        opt_paras = self.optimize_model_paras(
-            model,
-            x_transformations=x_trnas,
-            y_transformations=y_trans or None
-        )
+        if self._child_iters[model]>0:
+            # optimize the hyperparas of model using child objective
+            opt_paras = self.optimize_model_paras(
+                model,
+                x_transformations=x_trnas,
+                y_transformations=y_trans or None
+            )
+        else:
+            opt_paras = {}
 
         # fit the model with optimized hyperparameters and suggested transformations
         _model = self._build_model(
@@ -703,8 +711,6 @@ class OptimizePipeline(object):
             y_transformations: list
     ) -> dict:
         """optimizes hyperparameters of a model"""
-
-        self.CHILD_PREFIX = f"{self.parent_iter_}_{dateandtime_now()}"
 
         def child_objective(**suggestions):
             """objective function for optimization of model parameters"""
@@ -1161,7 +1167,7 @@ class OptimizePipeline(object):
         # save parent_suggestions
         parent_suggestions = jsonize(self.parent_suggestions_)
         with open(os.path.join(self.path, "parent_suggestions.json"), "w") as fp:
-            json.dump(parent_suggestions, fp)
+            json.dump(parent_suggestions, fp, sort_keys=True)
 
         # make a 2d array of all erros being monitored.
         errors = np.column_stack([list(v.values()) for v in self.metrics_.values()])
