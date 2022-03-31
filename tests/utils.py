@@ -19,8 +19,11 @@ def build_basic(parent_algorithm="random", child_algorithm="random",
               **kwargs
               ):
 
+    inputs_to_transform = inputs
+    if 'inputs_to_transform' in kwargs:
+        inputs_to_transform = kwargs.pop('inputs_to_transform')
     pl = OptimizePipeline(
-        inputs_to_transform=inputs,
+        inputs_to_transform=inputs_to_transform,
         parent_iterations=parent_iterations,
         child_iterations=child_iterations,
         parent_algorithm=parent_algorithm,

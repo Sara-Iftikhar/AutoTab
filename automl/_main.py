@@ -145,13 +145,17 @@ class OptimizePipeline(object):
         ----------
             inputs_to_transform : list
                 Input features on which feature engineering/transformation is to
-                be applied. By default all input features are considered.
+                be applied. By default all input features are considered. If you
+                want to apply a single transformation on a group of input features,
+                then pass this as a dictionary. This is helpful if the input data
+                consists of hundred or thousands of input features.
             input_transformations : list, dict
-                The transformations to be considered for input features. Default is None,
-                in which case all input features are considered.
+                The transformations to be considered for input features. Default
+                is None, in which case all input features are considered.
 
-                If list, then it will be the names of transformations to be considered for
-                all input features. By default following transformations are considered
+                If list, then it will be the names of transformations to be considered
+                for all input features. By default following transformations are
+                considered
 
                     - ``minmax``  rescale from 0 to 1
                     - ``center``    center the data by subtracting mean from it
@@ -166,11 +170,12 @@ class OptimizePipeline(object):
                     - ``log10``
                     - ``sqrt``    square root
 
-                The user can however, specify list of transformations to be considered for
-                each input feature. In such a case, this argument must be a dictionary
-                whose keys are names of input features and values are list of transformations.
+                The user can however, specify list of transformations to be considered
+                for each input feature. In such a case, this argument must be a
+                dictionary whose keys are names of input features and values are
+                list of transformations.
 
-            outputs_to_transform :
+            outputs_to_transform : list, optional
                 Output features on which feature engineering/transformation is to
                 be applied. If None, then transformations on outputs are not applied.
             output_transformations :
@@ -221,9 +226,17 @@ class OptimizePipeline(object):
                 any additional key word arguments for ai4water's Model
 
         """
-        self.inputs_to_transform = inputs_to_transform
+        if isinstance(inputs_to_transform, dict):
+            self._groups = inputs_to_transform
+            self.inputs_to_transform = list(inputs_to_transform.keys())
+        else:
+            self._groups = {inp:[inp] for inp in inputs_to_transform}
+            self.inputs_to_transform = inputs_to_transform
+
         self.input_transformations = input_transformations
+
         self.output_transformations = output_transformations or DEFAULT_Y_TRANFORMATIONS
+
 
         assert mode in ("regression", "classification")
         self.mode = mode
@@ -254,6 +267,10 @@ class OptimizePipeline(object):
                 raise ValueError(f"argument {arg} not allowed")
         self.model_kwargs = model_kwargs
         self.outputs_to_transform = outputs_to_transform
+        if outputs_to_transform is not None:
+            if isinstance(outputs_to_transform, str):
+                outputs_to_transform = [outputs_to_transform]
+            self._groups.update({outp: [outp] for outp in outputs_to_transform})
 
         # self.seed = None
         if monitor is None:
@@ -285,6 +302,11 @@ class OptimizePipeline(object):
 
         self._optimize_model = True
         self._model = None
+
+        if self.outputs_to_transform is None:
+            self._features_to_transform = self.inputs_to_transform
+        else:
+            self._features_to_transform = self.inputs_to_transform + self.outputs_to_transform
 
     @property
     def outputs_to_transform(self):
@@ -766,12 +788,10 @@ class OptimizePipeline(object):
 
         for feature, method in suggestions.items():
 
-            if feature in self.data_:
-                if method == "none":  # don't do anything with this feature
-                    pass
-                else:
+            if feature in self._features_to_transform:
+                if method != "none":  # don't do anything with this feature
                     # get the relevant transformation for this feature
-                    t = {"method": method, "features": [feature]}
+                    t = {"method": method, "features": self._groups[feature]}
 
                     # some preprocessing is required for log based transformations
                     if method.startswith("log"):
@@ -783,7 +803,7 @@ class OptimizePipeline(object):
                     elif method == "sqrt":
                         t['treat_negatives'] = True
 
-                    if feature in self.input_features:
+                    if feature in self.inputs_to_transform:
                         x_transformations.append(t)
                     else:
                         y_transformations.append(t)

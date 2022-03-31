@@ -7,9 +7,9 @@ from utils import run_basic, build_basic
 class TestMisc(unittest.TestCase):
 
     def test_r2_as_val_metric(self):
-        """test different val_metrics for parent and child hpos"""
+        """test a specifc val metric"""
         run_basic(eval_metric="r2",
-                  parent_iterations=10, child_iterations=25)
+                  parent_iterations=10, child_iterations=0)
 
         return
 
@@ -19,9 +19,21 @@ class TestMisc(unittest.TestCase):
                           models=['Lasso', 'LassoLars', 'LassoCV', 'Lasso'])
 
     def test_zero_child_iter(self):
-        res = run_basic(parent_iterations=14, child_iterations=0)
-
+        pl = run_basic(parent_iterations=14, child_iterations=0)
+        pl.post_fit(show=False)
+        pl.cleanup()
         return
+
+    def test_grouped_transformations(self):
+        pl = run_basic(
+            inputs_to_transform={
+                'group1': ['tide_cm', 'wat_temp_c', 'sal_psu', 'pcp3_mm'],
+                'group2': ['pcp_mm', 'air_temp_c', 'rel_hum']
+            },
+            child_iterations=0
+        )
+        pl.post_fit(show=False)
+        pl.cleanup()
 
 
 if __name__ == "__main__":

@@ -94,7 +94,7 @@ class TestRegression(unittest.TestCase):
             "Lasso",
             "RandomForestRegressor",
             "HistGradientBoostingRegressor",
-        ])
+        ], child_iterations=0)
         ax = pl.dumbbell_plot('r2', show=self.show)
         assert isinstance(ax, plt.Axes)
         pl.cleanup()
@@ -108,7 +108,7 @@ class TestRegression(unittest.TestCase):
             "Lasso",
             "RandomForestRegressor",
             "HistGradientBoostingRegressor",
-        ])
+        ], child_iterations=0)
         ax = pl.compare_models('r2', "bar_chart", show=self.show)
         assert isinstance(ax, plt.Axes)
         ax = pl.compare_models('r2', show=self.show)
@@ -119,9 +119,10 @@ class TestRegression(unittest.TestCase):
     def test_y_transformations(self):
         output_transformations = ['sqrt', 'log', 'log10']
         pl = run_basic(parent_algorithm="bayes",
-                            parent_iterations=12,
-                            outputs_to_transform='tetx_coppml',
-                            output_transformations=output_transformations,
+                       parent_iterations=12,
+                       outputs_to_transform='tetx_coppml',
+                       output_transformations=output_transformations,
+                       child_iterations = 0
                             )
 
         y_transformation = pl.parent_suggestions_[1]['y_transformation'][0]['method']
@@ -131,7 +132,7 @@ class TestRegression(unittest.TestCase):
 
     def test_tpe(self):
         pl = run_basic(parent_algorithm="tpe",
-        parent_iterations=12, eval_metric="nse",)
+        parent_iterations=12, eval_metric="nse", child_iterations=0)
         pl.post_fit(show=False)
         pl.cleanup()
 

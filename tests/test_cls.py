@@ -41,7 +41,7 @@ class TestBinaryCls(unittest.TestCase):
                     "KNeighborsClassifier",
                     ],
             parent_iterations=12,
-            child_iterations=12,
+            child_iterations=0,
         )
 
         results = pl.fit(data=cls_data)
