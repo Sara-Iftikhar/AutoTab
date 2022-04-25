@@ -21,9 +21,20 @@ from ai4water import Model
 from ai4water._optimize import make_space
 from ai4water.hyperopt.utils import to_skopt_space
 from ai4water.utils.utils import dateandtime_now, jsonize
-from ai4water.hyperopt import Categorical, HyperOpt, Integer
-from ai4water.experiments.utils import regression_space, classification_space
+from ai4water.hyperopt import Categorical, HyperOpt, Integer, Real
+from ai4water.experiments.utils import regression_space, classification_space, dl_space
+from ai4water.models import MLP, CNN, LSTM, CNNLSTM, LSTMAutoEncoder, TFT, TCN
 
+
+DL_MODELS = {
+    "MLP": MLP,
+    "LSTM":LSTM,
+    "CNN":CNN,
+    "CNNLSTM":CNNLSTM,
+    "TFT":TFT,
+    "TCN":TCN,
+    "LSTMAutoEncoder":LSTMAutoEncoder
+}
 
 SEP = os.sep
 
@@ -31,7 +42,6 @@ DEFAULT_TRANSFORMATIONS = [
     "minmax", "center", "scale", "zscore", "box-cox", "yeo-johnson",
     "quantile", "robust", "log", "log2", "log10", "sqrt", "none",
               ]
-DEFAULT_Y_TRANFORMATIONS = ["log", "log2", "log10", "sqrt", "none"]
 
 METRIC_TYPES = {
     "r2": "max",
@@ -135,6 +145,7 @@ class OptimizePipeline(object):
             cv_child_hpo: bool = None,
             monitor: Union[list, str] = None,
             mode: str = "regression",
+            category:str = "ML",
             prefix: str = None,
             **model_kwargs
     ):
@@ -179,17 +190,24 @@ class OptimizePipeline(object):
                 Output features on which feature engineering/transformation is to
                 be applied. If None, then transformations on outputs are not applied.
             output_transformations :
-                The transformations to be considered for outputs/targets. By default
-                following transformations are considered for outputs
-
-                    - ``log``
-                    - ``log10``
-                    - ``sqrt``
-                    - ``log2``
+                The transformations to be considered for outputs/targets. The user
+                can consider any transformation as given for ``input_transformations``
             models : list, optional
                 The models/algorithms to consider during optimzation. If not given, then all
                 available models from sklearn, xgboost, catboost and lgbm are
-                considered.
+                considered. For neural neworks, following 6 model types are
+                considered by default
+
+                    - MLP   multi layer perceptron
+                    - CNN   1D convolution neural network
+                    - LSTM  Long short term memory network
+                    - CNNLSTM   CNN-> LSTM
+                    - LSTMAutoEncoder  LSTM based autoencoder
+                    - TCN  Temporal convolution networks
+                    - TFT  Temporal fusion Transformer
+
+                However, in such cases, the ``category`` must be ``DL``.
+
             parent_iterations : int, optional
                 Number of iterations for parent optimization loop
             child_iterations : int, optional
@@ -220,8 +238,10 @@ class OptimizePipeline(object):
             monitor :
                 Nmaes of performance metrics to monitor in parent hpo loop. If None,
                 then R2 is monitored for regression and accuracy for classification.
-            mode : str
+            mode : str, optional (default="regression")
                 whether this is a ``regression`` problem or ``classification``
+            category : str, optional (detault="DL")
+                either "DL" or "ML". If DL, the pipeline is optimized for neural networks.
             **model_kwargs :
                 any additional key word arguments for ai4water's Model
 
@@ -235,21 +255,36 @@ class OptimizePipeline(object):
 
         self.input_transformations = input_transformations
 
-        self.output_transformations = output_transformations or DEFAULT_Y_TRANFORMATIONS
-
+        self.output_transformations = output_transformations or DEFAULT_TRANSFORMATIONS
 
         assert mode in ("regression", "classification")
         self.mode = mode
+
+        assert category in ("DL", "ML")
+        self.category = category
+
         self.models = models
         if models is None:
             if mode == "regression":
-                self.models = list(regression_space(2).keys())
+                if category == "ML":
+                    self.models = list(regression_space(2).keys())
+                else:
+                    self.models = list(dl_space(2).keys())
             else:
-                self.models = list(classification_space(2).keys())
+                if category == "ML":
+                    self.models = list(classification_space(2).keys())
+                else:
+                    self.models = list(dl_space(2).keys())
+
         elif isinstance(models, list):
             assert all([isinstance(obj, str) for obj in models])
             if len(set(models)) != len(models):
                 raise ValueError(f"models contain repeating values. \n{models}")
+
+            if self.category == "DL":
+                assert all([model in DL_MODELS.keys() for model in models]), f"""
+                Only following deel learning models can be considered {DL_MODELS.keys()}
+                """
 
 
         self.parent_iterations = parent_iterations
@@ -289,10 +324,13 @@ class OptimizePipeline(object):
         assert isinstance(monitor, list)
         self.monitor = monitor
 
-        if self.mode == "regression":
-            space = regression_space(num_samples=10)
+        if self.category == "ML":
+            if self.mode == "regression":
+                space = regression_space(num_samples=10)
+            else:
+                space = classification_space(num_samples=10)
         else:
-            space = classification_space(num_samples=10)
+            space = dl_space(num_samples=10)
 
         # model_space contains just those models which are being considered
         self.model_space = {}
@@ -505,8 +543,8 @@ class OptimizePipeline(object):
             # on feature transformation is to be applied
 
             if isinstance(self.output_transformations, list):
-                assert all([t in DEFAULT_Y_TRANFORMATIONS for t in self.output_transformations]), f"""
-                transformations must be one of {DEFAULT_Y_TRANFORMATIONS}"""
+                assert all([t in DEFAULT_TRANSFORMATIONS for t in self.output_transformations]), f"""
+                transformations must be one of {DEFAULT_TRANSFORMATIONS}"""
 
                 for out in self.output_features:
                     append[out] = self.output_transformations
@@ -519,8 +557,8 @@ class OptimizePipeline(object):
                     assert out_feature in self.output_features
                     assert isinstance(y_transformations, list)
                     assert all(
-                        [t in DEFAULT_Y_TRANFORMATIONS for t in self.output_transformations]), f"""
-                        transformations must be one of {DEFAULT_Y_TRANFORMATIONS}"""
+                        [t in DEFAULT_TRANSFORMATIONS for t in self.output_transformations]), f"""
+                        transformations must be one of {DEFAULT_TRANSFORMATIONS}"""
                     append[out_feature] = y_transformations
                 y_categories = list(self.output_transformations.values())
 
@@ -536,6 +574,13 @@ class OptimizePipeline(object):
             self._model = self.models[0]
 
         return sp
+
+    def add_batch_size_space(self):
+        return Categorical([4, 8, 16, 32, 64], name="batch_size")
+
+    def add_lr_space(self):
+        space = Real(1e-5, 0.05, name="lr", num_samples=10)
+        return space
 
     @property
     def max_child_iters(self) -> int:
@@ -672,9 +717,14 @@ class OptimizePipeline(object):
         else:
             opt_paras = {}
 
+        if self.category == "DL":
+            model_config = DL_MODELS[model](**opt_paras)
+        else:
+            model_config = {model: opt_paras}
+
         # fit the model with optimized hyperparameters and suggested transformations
         _model = self._build_model(
-            model={model: opt_paras},
+            model=model_config,
             val_metric=self.eval_metric,
             x_transformation=x_trnas,
             y_transformation=y_trans,
@@ -739,9 +789,14 @@ class OptimizePipeline(object):
 
             self.child_iter_ += 1
 
+            if self.category == "DL":
+                model_config = DL_MODELS[model](**suggestions)
+            else:
+                model_config = {model: suggestions}
+
             # build child model
             _model = self._build_model(
-                model={model: suggestions},
+                model=model_config,
                 val_metric=self.eval_metric,
                 x_transformation=x_transformations,
                 y_transformation=y_transformations,
@@ -995,6 +1050,10 @@ class OptimizePipeline(object):
         metrics = {}
 
         for _model in self.models:
+
+            if self.category == "DL":
+                _model = DL_MODELS[_model]
+
             # build model
             model = self._build_model(
                 model=_model,
@@ -1699,22 +1758,17 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
          metric_name : str, optional
             The metric with respect to which to compare the models.
          plot_type : str, optional
-            if "circular" then `easy_mpl.circular_bar_chart`_ is drawn otherwise
-            a simple bar_plot is drawn.
+            if "circular" then `easy_mpl.circular_bar_plot <https://easy-mpl.readthedocs.io/en/latest/#module-12>`_
+            is drawn otherwise a simple bar_plot is drawn.
          show : bool, optional
             whether to show the plot or not
          **kwargs :
-            keyword arguments for `easy_mpl.circular_bar_plot`_ or `easy_mpl.bar_chart`_
+            keyword arguments for `easy_mpl.circular_bar_plot <https://easy-mpl.readthedocs.io/en/latest/#module-12>`_
+            or `easy_mpl.bar_chart <https://easy-mpl.readthedocs.io/en/latest/#module-1>`_
 
         Returns
         -------
             matplotlib.pyplot.Axes
-
-        .. easy_mpl.circular_bar_plot_
-            https://easy-mpl.readthedocs.io/en/latest/#module-12
-
-        .. easy_mpl.bar_chart_
-            https://easy-mpl.readthedocs.io/en/latest/#module-1
         """
 
         metric_name = metric_name or self.eval_metric

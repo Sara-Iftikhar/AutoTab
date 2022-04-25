@@ -46,10 +46,13 @@ setup(
     packages=['automl'],
 
     install_requires=[
-        #'ai4water[ml_hpo]>=1.0b6',
+        'ai4water[ml_hpo]>=1.01',
         'h5py',
     ],
     extras_require={
-        'all': ["ai4water[ml_hpo]>=1.0b6", "h5py"],
+        'all': ["ai4water[ml_hpo]>=1.01",
+                "tensorflow==2.7",
+                "h5py"],
+
     }
 )

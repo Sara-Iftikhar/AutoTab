@@ -12,8 +12,10 @@ inputs = ['tide_cm', 'wat_temp_c', 'sal_psu',
 data = busan_beach(inputs=inputs)
 
 
-def build_basic(parent_algorithm="random", child_algorithm="random",
-              parent_iterations=4, child_iterations=4,
+def build_basic(parent_algorithm="random",
+                child_algorithm="random",
+                parent_iterations=4,
+                child_iterations=4,
               eval_metric="mse",
                 models = None,
               **kwargs
