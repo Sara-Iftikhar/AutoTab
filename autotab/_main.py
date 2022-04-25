@@ -22,8 +22,8 @@ from ai4water._optimize import make_space
 from ai4water.hyperopt.utils import to_skopt_space
 from ai4water.utils.utils import dateandtime_now, jsonize
 from ai4water.hyperopt import Categorical, HyperOpt, Integer, Real
-from ai4water.experiments.utils import regression_space, classification_space, dl_space
 from ai4water.models import MLP, CNN, LSTM, CNNLSTM, LSTMAutoEncoder, TFT, TCN
+from ai4water.experiments.utils import regression_space, classification_space, dl_space
 
 
 DL_MODELS = {
@@ -406,7 +406,7 @@ class OptimizePipeline(object):
         return
 
     def update_model_space(self, space: dict) -> None:
-        """updates or changes the space of an already existing model
+        """updates or changes the search space of an already existing model
 
         Parameters
         ---------
@@ -494,7 +494,8 @@ class OptimizePipeline(object):
         return
 
     def change_child_iteration(self, model: dict):
-        """You may want to change the child hpo iterations for one or more models.
+        """
+        We may want to change the child hpo iterations for one or more models.
         For example we may want to run only 10 iterations for LinearRegression but 40
         iterations for XGBRegressor. In such a canse we can use this function to
         modify child hpo iterations for one or more models. The iterations for all
@@ -639,6 +640,7 @@ class OptimizePipeline(object):
             previous_results=None
     ) -> "ai4water.hyperopt.HyperOpt":
         """
+        Optimizes the pipeline for the given data.
 
         Parameters
         ----------
@@ -685,12 +687,15 @@ class OptimizePipeline(object):
             self,
             **suggestions
     ) -> float:
-        """objective function for parent hpo loop.
+        """
+        objective function for parent hpo loop.
+
         This objective fuction is to optimize transformations for each input
         feature and the model.
 
-        Arguments:
-            suggestions:
+        Parameters
+        ----------
+            **suggestions :
                 key word arguments consisting of suggested transformation for each
                 input feature and the model to use
         """
@@ -873,7 +878,8 @@ class OptimizePipeline(object):
             y_transformation,
             prefix: Union[str, None]
     ) -> Model:
-        """build the ai4water Model. When overwriting this method, the user
+        """
+        build the ai4water Model. When overwriting this method, the user
         must return an instance of ai4water's Model_ class.
 
         .. Model:
@@ -907,8 +913,19 @@ class OptimizePipeline(object):
             self,
             metric_name: str
     ) -> float:
-        """returns the best value of a particular performance metric.
+        """
+        returns the best value of a particular performance metric.
         The metric must be recorded i.e. must be given as `monitor` argument.
+
+        Parameters
+        ----------
+        metric_name : str
+            Name of performance metric
+
+        Returns
+        -------
+        float
+            the best value of performance metric acheived
         """
         if metric_name not in self.metrics_:
             raise MetricNotMonitored(metric_name, list(self.metrics_.keys()))
@@ -924,8 +941,9 @@ class OptimizePipeline(object):
     ) -> int:
         """returns iteration of the best value of a particular performance metric.
 
-        Arguments:
-            metric_name:
+        Parameters
+        ----------
+            metric_name : str, optional
                 The metric must be recorded i.e. must be given as `monitor` argument.
                 If not given, then evaluation metric is used.
         """
@@ -949,17 +967,20 @@ class OptimizePipeline(object):
         """returns the best pipeline with respect to a particular performance
         metric.
 
-        Arguments:
-            metric_name:
+        Parameters
+        ---------
+            metric_name : str, optional
                 The name of metric whose best value is to be retrieved. The metric
                 must be recorded i.e. must be given as `monitor`.
-        Returns:
+        Returns
+        -------
+        dict
             a dictionary with follwoing keys
 
                 - ``path`` path where the model is saved on disk
                 - ``model`` name of model
-                - x_transfromations
-                - y_transformations
+                - ``x_transfromations``  transformations for the input data
+                - ``y_transformations`` transformations for the target data
         """
 
         metric_name = metric_name or self.eval_metric
@@ -979,16 +1000,17 @@ class OptimizePipeline(object):
 
         Parameters
         ----------
-            model_name:
+            model_name : str
                 The name of model for which best pipeline is to be found. The `best`
                 is defined by ``metric_name``.
-            metric_name:
+            metric_name : str, optional
                 The name of metric with respect to which the best model is to
                 be retrieved. If not given, the best model is defined by the
                 evaluation metric.
 
         Returns
         -------
+        tuple
             a tuple of length two
 
             - first value is a float which represents the value of
@@ -1032,16 +1054,22 @@ class OptimizePipeline(object):
         return sorted_container[-1]
 
     def baseline_results(self, data=None) -> tuple:
-        """Runs all the models with their default parameters and without
+        """
+        Returns default performance of all models.
+
+        It runs all the models with their default parameters and without
         any x and y transformation. These results can be considered as
         baseline results and can be compared with optimized model's results.
         The model is trained on 'training'+'validation' data.
 
-        Arguments:
-            data
+        Parameters
+        ----------
+            data :
                 If given, will override data given during .fit call.
 
-        Returns:
+        Returns
+        -------
+        tuple
             a tuple of two dictionaries.
             - a dictionary of val_scores on test data for each model
             - a dictionary of metrics being monitored for  each model on test data.
@@ -1093,7 +1121,8 @@ class OptimizePipeline(object):
             show: bool = True,
             save: bool = True
     ) -> plt.Axes:
-        """Generate Dumbbell plot as comparison of baseline models with
+        """
+        Generate Dumbbell_ plot as comparison of baseline models with
         optimized models.
 
         Parameters
@@ -1112,6 +1141,9 @@ class OptimizePipeline(object):
         Returns
         -------
             matplotlib Axes
+
+        .. _Dumbbell:
+            https://easy-mpl.readthedocs.io/en/latest/plots.html#easy_mpl.dumbbell_plot
         """
         metric_name = metric_name or self.eval_metric
 
@@ -1182,7 +1214,8 @@ class OptimizePipeline(object):
             save: bool = True,
             **kwargs
     ) -> plt.Figure:
-        """makes taylor plot using the best version of each model.
+        """
+        makes `Taylor`_'s plot using the best version of each model.
         The number of models in taylor plot will be equal to the number
         of models which have been considered by the model.
 
@@ -1205,6 +1238,9 @@ class OptimizePipeline(object):
 
         .. _easy_mpl:
             https://github.com/Sara-Iftikhar/easy_mpl#taylor_plot
+
+        .. _Taylor:
+            https://doi.org/10.1029/2000JD900719
         """
 
         if self.taylor_plot_inputs_['observations']['test'] is None:
@@ -1238,8 +1274,23 @@ class OptimizePipeline(object):
 
         return ax
 
-    def save_results(self):
-        """saves the results. It is called automatically at the end of optimization.
+    def save_results(self)->None:
+        """
+        saves the results. It is called automatically at the end of optimization.
+        It saves tried models and transformations at each step as json file
+        with the name ``parent_suggestions.json``.
+
+        An ``errors.csv`` file is saved which contains validation peformance of the models
+        at each optimization iteration with respect to all metrics being monitored.
+
+        The performance of each model during child optimization iteration is saved as a csv
+        file with the name ``child_val_scores.csv``.
+
+        All of these results are saved in pl.path folder.
+
+        Returns
+        -------
+        None
         """
         self.end_time_ = time.asctime()
 
@@ -1380,8 +1431,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         Returns
         -------
         dict
-            a dictionary with two keys `init_paras` and `runtime_paras` and
-            `version_info`.
+            a dictionary with two keys ``init_paras`` and ``runtime_paras`` and
+            ``version_info``.
 
         """
         _config = {
@@ -1453,7 +1504,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             self,
             metric_name: str = None,
             model_name: str = None
-    ):
+    )->Model:
         """Build and Evaluate the best model with respect to metric *from config*.
 
         Parameters
@@ -1492,7 +1543,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
     def bfe_model_from_scratch(
             self,
             iter_num: int,
-    ):
+    )->Model:
         """
         Builds, trains and evalutes the model from a specific iteration.
         The model is trained on 'training'+'validation' data.
@@ -1521,8 +1572,9 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             self,
             metric_name: str = None,
             model_name: str = None
-    ):
-        """Builds, Trains and Evaluates the best model with respect to metric from
+    )->Model:
+        """
+        Builds, Trains and Evaluates the **best model** with respect to metric from
         scratch. The model is trained on 'training'+'validation' data. Running
         this mothod will also populate ``taylor_plot_inputs_`` dictionary.
 
@@ -1701,6 +1753,11 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         ----------
         show : bool, optional
             whether to show the plots or not
+
+        Returns
+        -------
+        None
+
         """
 
         self.bfe_all_best_models()
@@ -1755,16 +1812,16 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
          Parameters
          ----------
-         metric_name : str, optional
-            The metric with respect to which to compare the models.
-         plot_type : str, optional
-            if "circular" then `easy_mpl.circular_bar_plot <https://easy-mpl.readthedocs.io/en/latest/#module-12>`_
-            is drawn otherwise a simple bar_plot is drawn.
-         show : bool, optional
-            whether to show the plot or not
-         **kwargs :
-            keyword arguments for `easy_mpl.circular_bar_plot <https://easy-mpl.readthedocs.io/en/latest/#module-12>`_
-            or `easy_mpl.bar_chart <https://easy-mpl.readthedocs.io/en/latest/#module-1>`_
+            metric_name : str, optional
+                The metric with respect to which to compare the models.
+            plot_type : str, optional
+                if "circular" then `easy_mpl.circular_bar_plot <https://easy-mpl.readthedocs.io/en/latest/#module-12>`_
+                is drawn otherwise a simple bar_plot is drawn.
+            show : bool, optional
+                whether to show the plot or not
+            **kwargs :
+                keyword arguments for `easy_mpl.circular_bar_plot <https://easy-mpl.readthedocs.io/en/latest/#module-12>`_
+                or `easy_mpl.bar_chart <https://easy-mpl.readthedocs.io/en/latest/#module-1>`_
 
         Returns
         -------
@@ -1842,6 +1899,7 @@ def eval_model_manually(model, metric: str, Metrics) -> float:
 
 
 class MetricNotMonitored(Exception):
+
     def __init__(self, metric_name, available_metrics):
         self.metric = metric_name
         self.avail_metrics = available_metrics
@@ -1852,7 +1910,9 @@ class MetricNotMonitored(Exception):
         {self.avail_metrics}
         """
 
+
 class ModelNotUsedError(Exception):
+
     def __init__(self, model_name):
         self.model = model_name
 
