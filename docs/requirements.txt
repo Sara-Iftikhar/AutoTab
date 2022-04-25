@@ -1,4 +1,4 @@
-ai4water[ml_hpo]>=1.0b6
+ai4water[ml_hpo]>=1.01
 sphinx
 sphinx-prompt
 sphinx_copybutton
