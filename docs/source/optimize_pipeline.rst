@@ -7,7 +7,7 @@ OptimizePipeline
    :caption: contents:
 
 
-.. autoclass:: automl.OptimizePipeline
+.. autoclass:: autotab.OptimizePipeline
    :members:
         __init__,
         fit,

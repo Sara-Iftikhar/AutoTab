@@ -3,7 +3,7 @@ from setuptools import setup
 
 import os
 
-long_desc="automl",
+long_desc="autotab",
 
 fpath = os.path.join(os.getcwd(), "readme.md")
 if os.path.exists(fpath):
@@ -12,7 +12,7 @@ if os.path.exists(fpath):
 
 setup(
 
-    name='automl',
+    name='autotab',
 
     version="0.1",
 
@@ -20,7 +20,7 @@ setup(
     long_description=long_desc,
     long_description_content_type="text/markdown",
 
-    url='https://github.com/Sara-Iftikhar/automl',
+    url='https://github.com/Sara-Iftikhar/autotab',
 
     author='Sara Iftikhar',
     author_email='sara.rwpk@gmail.com',
@@ -43,7 +43,7 @@ setup(
         'Programming Language :: Python :: 3.9',
     ],
 
-    packages=['automl'],
+    packages=['autotab'],
 
     install_requires=[
         'ai4water[ml_hpo]>=1.1',
