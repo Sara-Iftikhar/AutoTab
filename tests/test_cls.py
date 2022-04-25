@@ -8,7 +8,7 @@ site.addsitedir(package_path)
 
 from ai4water.datasets import MtropicsLaos
 
-from automl import OptimizePipeline
+from autotab import OptimizePipeline
 
 
 cls_data = MtropicsLaos().make_classification(lookback_steps=1,)

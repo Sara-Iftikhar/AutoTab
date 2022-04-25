@@ -9,7 +9,7 @@ site.addsitedir(package_path)
 
 from ai4water.datasets import busan_beach
 
-from automl import OptimizePipeline
+from autotab import OptimizePipeline
 
 
 inputs = ['tide_cm', 'wat_temp_c', 'sal_psu',

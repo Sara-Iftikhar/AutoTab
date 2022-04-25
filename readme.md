@@ -7,13 +7,13 @@ method for tabular datasets.
 
 This package can be installed using pip from pypi using following command
 
-    pip install automl
+    pip install autotab
     
 or using github link for the latest code
 
-	python -m pip install git+https://github.com/Sara-Iftikhar/automl.git
+	python -m pip install git+https://github.com/Sara-Iftikhar/autotab.git
 
-or using setup file, go to folder where repo is downloaded
+or using setup file, go to folder where this repoitory is downloaded
 
     python setup.py install
 
@@ -23,8 +23,7 @@ This covers all scikit-learng models, catboost, lightgbm and xgboost
 
 ```python
 from ai4water.datasets import busan_beach
-
-from automl import OptimizePipeline
+from autotab import OptimizePipeline
 
 data = busan_beach()
 
@@ -55,8 +54,7 @@ stacks of Dense layers. The number of layers are also optimized.
 
 ```python
 from ai4water.datasets import busan_beach
-
-from automl import OptimizePipeline
+from autotab import OptimizePipeline
 
 data = busan_beach()
 input_features = data.columns.tolist()[0:-1]

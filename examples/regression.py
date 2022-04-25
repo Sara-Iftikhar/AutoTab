@@ -6,7 +6,7 @@ regression
 
 from ai4water.datasets import busan_beach
 from skopt.plots import plot_objective
-from automl import OptimizePipeline
+from autotab import OptimizePipeline
 
 data = busan_beach()
 

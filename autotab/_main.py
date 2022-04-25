@@ -113,7 +113,7 @@ class OptimizePipeline(object):
 
     Example
     -------
-        >>> from automl import OptimizePipeline
+        >>> from autotab import OptimizePipeline
         >>> from ai4water.datasets import busan_beach
         >>> data = busan_beach()
         >>> input_features = data.columns.tolist()[0:-1]
