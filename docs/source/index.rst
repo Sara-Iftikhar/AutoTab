@@ -1,9 +1,22 @@
-.. automl documentation master file, created on Sun Jan  9 11:57:43 2022.
+.. AutoTab documentation master file, created on Sun Jan  9 11:57:43 2022.
 
+.. toctree::
+   :maxdepth: 2
+
+   installation
+   quick_start
+   faqs
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
-    optimize_pipeline
-    auto_examples/index
+   optimize_pipeline
+
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`

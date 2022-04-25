@@ -1,5 +1,5 @@
 =================
-optimize_pipeline
+OptimizePipeline
 =================
 
 .. toctree::

@@ -170,7 +170,7 @@ class OptimizePipeline(object):
 
                     - ``minmax``  rescale from 0 to 1
                     - ``center``    center the data by subtracting mean from it
-                    - ``scale`     scale the data by dividing it with its standard deviation
+                    - ``scale``     scale the data by dividing it with its standard deviation
                     - ``zscore``    first performs centering and then scaling
                     - ``box-cox``
                     - ``yeo-johnson``
