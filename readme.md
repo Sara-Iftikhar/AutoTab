@@ -1,4 +1,4 @@
-# automl
+# autotab
 
 optimize pipeline for any machine learning mdoel using hierarchical optimization 
 method for tabular datasets.
