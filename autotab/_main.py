@@ -26,6 +26,13 @@ from ai4water.models import MLP, CNN, LSTM, CNNLSTM, LSTMAutoEncoder, TFT, TCN
 from ai4water.experiments.utils import regression_space, classification_space, dl_space
 
 
+# in order to unify the use of metrics
+Metrics = {
+    'regression': lambda t, p, multiclass=False, **kwargs: RegressionMetrics(t, p, **kwargs),
+    'classification': lambda t, p, multiclass=False, **kwargs: ClassificationMetrics(t, p,
+        multiclass=multiclass, **kwargs)
+}
+
 DL_MODELS = {
     "MLP": MLP,
     "LSTM":LSTM,
@@ -91,7 +98,7 @@ class OptimizePipeline(object):
     hyperparmeters of child hpo loop.
 
     Attributes
-    -----------
+    ----------
 
     - metrics_
 
@@ -124,9 +131,9 @@ class OptimizePipeline(object):
         >>> results = pl.fit(data=data)
 
     Note
-    -----
-    This optimizationa always solves a minimization problem even if the val_metric
-    is r2.
+    ----
+    This optimization always solves a minimization problem even if the val_metric
+    is $R^2$.
     """
 
     def __init__(
@@ -145,6 +152,7 @@ class OptimizePipeline(object):
             cv_child_hpo: bool = None,
             monitor: Union[list, str] = None,
             mode: str = "regression",
+            num_classes:int = None,
             category:str = "ML",
             prefix: str = None,
             **model_kwargs
@@ -240,6 +248,8 @@ class OptimizePipeline(object):
                 then R2 is monitored for regression and accuracy for classification.
             mode : str, optional (default="regression")
                 whether this is a ``regression`` problem or ``classification``
+            num_classes : int, optional (default=None)
+                number of classes, only relevant if mode=="classification".
             category : str, optional (detault="DL")
                 either "DL" or "ML". If DL, the pipeline is optimized for neural networks.
             **model_kwargs :
@@ -257,8 +267,9 @@ class OptimizePipeline(object):
 
         self.output_transformations = output_transformations or DEFAULT_TRANSFORMATIONS
 
-        assert mode in ("regression", "classification")
+        assert mode in ("regression", "classification"), f"{mode} not allowed as mode"
         self.mode = mode
+        self.num_classes = num_classes
 
         assert category in ("DL", "ML")
         self.category = category
@@ -285,7 +296,6 @@ class OptimizePipeline(object):
                 assert all([model in DL_MODELS.keys() for model in models]), f"""
                 Only following deel learning models can be considered {DL_MODELS.keys()}
                 """
-
 
         self.parent_iterations = parent_iterations
         self.child_iterations = child_iterations
@@ -377,9 +387,7 @@ class OptimizePipeline(object):
 
     @property
     def Metrics(self):
-        if self.mode == "regression":
-            return RegressionMetrics
-        return ClassificationMetrics
+        return Metrics[self.mode]
 
     @property
     def input_features(self):
@@ -397,6 +405,13 @@ class OptimizePipeline(object):
             return _output_features
         else:
             raise ValueError
+
+    @property
+    def num_outputs(self):
+        if self.mode == "classification":
+            return self.num_classes
+        else:
+            return len(self.output_features)
 
     def _save_config(self):
         cpath = os.path.join(self.path, "config.json")
@@ -497,7 +512,7 @@ class OptimizePipeline(object):
         """
         We may want to change the child hpo iterations for one or more models.
         For example we may want to run only 10 iterations for LinearRegression but 40
-        iterations for XGBRegressor. In such a canse we can use this function to
+        iterations for XGBRegressor. In such a case we can use this function to
         modify child hpo iterations for one or more models. The iterations for all
         the remaining models will remain same as defined by the user at the start.
         This method updated `_child_iters` dictionary
@@ -723,7 +738,9 @@ class OptimizePipeline(object):
             opt_paras = {}
 
         if self.category == "DL":
-            model_config = DL_MODELS[model](**opt_paras)
+            model_config = DL_MODELS[model](mode=self.mode,
+                                            output_features=self.num_outputs,
+                                            **opt_paras)
         else:
             model_config = {model: opt_paras}
 
@@ -744,27 +761,11 @@ class OptimizePipeline(object):
             'path': _model.path
         }
 
-        val_score = self._fit_and_eval(_model, self.cv_parent_hpo,
-                                       self.eval_metric)
-
-        # calculate all additional performance metrics which are being monitored
-        t, p = _model.predict(data='validation', return_true=True,
-                             process_results=False)
-        errors = self.Metrics(t, p, remove_zero=True, remove_neg=True)
-
-        for k, v in self.metrics_.items():
-            pm = getattr(errors, k)()
-            v[self.parent_iter_] = pm
-
-            func = compare_func1(METRIC_TYPES[k])
-            best_so_far = func(self.metrics_best_.loc[:self.parent_iter_, k])
-
-            best_so_far = fill_val(METRIC_TYPES[k], best_so_far)
-
-            func = compare_func(METRIC_TYPES[k])
-            if func(pm, best_so_far):
-
-                self.metrics_best_.loc[self.parent_iter_-1, k] = pm
+        val_score = self._fit_and_eval(_model,
+                                       self.cv_parent_hpo,
+                                       self.eval_metric,
+                                       eval_metrics=True,
+                                       )
 
         self.val_scores_[self.parent_iter_ - 1] = val_score  # -1 because array indexing starts from 0
 
@@ -795,7 +796,9 @@ class OptimizePipeline(object):
             self.child_iter_ += 1
 
             if self.category == "DL":
-                model_config = DL_MODELS[model](**suggestions)
+                model_config = DL_MODELS[model](mode=self.mode,
+                                                output_features=self.num_outputs,
+                                                **suggestions)
             else:
                 model_config = {model: suggestions}
 
@@ -897,7 +900,12 @@ class OptimizePipeline(object):
         )
         return model
 
-    def _fit_and_eval(self, model, cross_validate, metric_to_compute) -> float:
+    def _fit_and_eval(
+            self, model,
+            cross_validate,
+            metric_to_compute,
+            eval_metrics:bool = False,
+    ) -> float:
         """fits the model and evaluates it and returns the score"""
         if cross_validate:
             # val_score will be obtained by performing cross validation
@@ -905,7 +913,11 @@ class OptimizePipeline(object):
         else:
             # train the model and evaluate it to calculate val_score
             model.fit(data=self.data_)
-            val_score = eval_model_manually(model, metric_to_compute, self.Metrics)
+            val_score = self._eval_model_manually(
+                model,
+                metric_to_compute,
+                eval_metrics=eval_metrics
+            )
 
         return val_score
 
@@ -1096,7 +1108,7 @@ class OptimizePipeline(object):
             model.fit_on_all_training_data(data=data)
 
             t, p = model.predict(return_true=True)
-            errors = self.Metrics(t, p)
+            errors = self.Metrics(t, p, multiclass=model.is_multiclass)
             val_scores[_model] = getattr(errors, self.eval_metric)()
 
             _metrics = {}
@@ -1701,7 +1713,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             assert x is None
             t, p = model.predict(data=data, process_results=False, return_true=True)
 
-        errors = self.Metrics(t, p)
+        errors = self.Metrics(t, p, multiclass=model.is_multiclass)
 
         return getattr(errors, metric_name)()
 
@@ -1872,30 +1884,62 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         return ax
 
+    def _eval_model_manually(self, model, metric: str, eval_metrics=False) -> float:
+        """evaluates the model"""
+        # make prediction on validation data
+        t, p = model.predict(data='validation',
+                             return_true=True,
+                             process_results=False)
 
-def eval_model_manually(model, metric: str, Metrics) -> float:
-    """evaluates the model"""
-    # make prediction on validation data
-    t, p = model.predict(data='validation', return_true=True,
-                         process_results=False)
-    
-    p = p.reshape(-1, 1)  # TODO, for cls, Metrics do not accept (n,) array
+        if len(p) == p.size:
+            p = p.reshape(-1, 1)  # TODO, for cls, Metrics do not accept (n,) array
 
-    errors = Metrics(t, p, remove_zero=True, remove_neg=True)
-    val_score = getattr(errors, metric)()
+        errors = self.Metrics(
+            t,
+            p,
+            remove_zero=True,
+            remove_neg=True,
+            multiclass=model.is_multiclass)
 
-    metric_type = METRIC_TYPES.get(metric, 'min')
+        val_score = getattr(errors, metric)()
 
-    # the optimization will always solve minimization problem so if
-    # the metric is to be maximized change the val_score accordingly
-    if metric_type != "min":
-        val_score = 1.0 - val_score
+        metric_type = METRIC_TYPES.get(metric, 'min')
 
-    # val_score can be None/nan/inf
-    if not math.isfinite(val_score):
-        val_score = 1.0
+        # the optimization will always solve minimization problem so if
+        # the metric is to be maximized change the val_score accordingly
+        if metric_type != "min":
+            val_score = 1.0 - val_score
 
-    return val_score
+        # val_score can be None/nan/inf
+        if not math.isfinite(val_score):
+            val_score = 1.0
+
+        if eval_metrics:
+            # calculate all additional performance metrics which are being monitored
+
+            errors = self.Metrics(
+                t,
+                p,
+                remove_zero=True,
+                remove_neg=True,
+                multiclass=model.is_multiclass
+            )
+
+            for k, v in self.metrics_.items():
+                pm = getattr(errors, k)()
+                v[self.parent_iter_] = pm
+
+                func = compare_func1(METRIC_TYPES[k])
+                best_so_far = func(self.metrics_best_.loc[:self.parent_iter_, k])
+
+                best_so_far = fill_val(METRIC_TYPES[k], best_so_far)
+
+                func = compare_func(METRIC_TYPES[k])
+                if func(pm, best_so_far):
+
+                    self.metrics_best_.loc[self.parent_iter_-1, k] = pm
+
+        return val_score
 
 
 class MetricNotMonitored(Exception):

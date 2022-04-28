@@ -9,7 +9,7 @@ inputs = ['tide_cm', 'wat_temp_c', 'sal_psu',
           'pcp3_mm',  # 'pcp6_mm', 'pcp12_mm',
           'pcp_mm', 'air_temp_c', 'rel_hum']
 
-data = busan_beach(inputs=inputs)
+rgr_data = busan_beach(inputs=inputs)
 
 
 def build_basic(parent_algorithm="random",
@@ -21,9 +21,18 @@ def build_basic(parent_algorithm="random",
               **kwargs
               ):
 
-    inputs_to_transform = inputs
+    input_features = rgr_data.columns.tolist()[0:-1]
+    if 'input_features' in kwargs:
+        input_features = kwargs.pop('input_features')
+
+    output_features = rgr_data.columns.tolist()[-1:]
+    if 'output_features' in kwargs:
+        output_features = kwargs.pop('output_features')
+
+    inputs_to_transform = input_features
     if 'inputs_to_transform' in kwargs:
         inputs_to_transform = kwargs.pop('inputs_to_transform')
+
     pl = OptimizePipeline(
         inputs_to_transform=inputs_to_transform,
         parent_iterations=parent_iterations,
@@ -38,8 +47,8 @@ def build_basic(parent_algorithm="random",
             "Lasso",
             "RandomForestRegressor"
         ],
-        input_features=data.columns.tolist()[0:-1],
-        output_features=data.columns.tolist()[-1:],
+        input_features=input_features,
+        output_features=output_features,
         split_random=True,
         train_fraction=1.0,
         **kwargs
@@ -49,7 +58,10 @@ def build_basic(parent_algorithm="random",
     return pl
 
 
-def run_basic(**kwargs):
+def run_basic(data=None, **kwargs):
+
+    if data is None:
+        data = rgr_data
 
     pl = build_basic(**kwargs)
     pl.fit(
