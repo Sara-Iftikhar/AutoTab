@@ -9,9 +9,10 @@
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: API:
 
    optimize_pipeline
+   auto_examples/index
 
 
 Indices and tables

@@ -647,6 +647,8 @@ class OptimizePipeline(object):
             'observations': {"test": None}
         }
 
+        self.baseline_results_ = None
+
         self._save_config()  # will also make path if it does not already exists
 
         self._print_header()
@@ -666,7 +668,8 @@ class OptimizePipeline(object):
     def fit(
             self,
             data: pd.DataFrame,
-            previous_results=None
+            previous_results=None,
+            process_results=True,
     ) -> "ai4water.hyperopt.HyperOpt":
         """
         Optimizes the pipeline for the given data.
@@ -677,6 +680,7 @@ class OptimizePipeline(object):
                 A pandas dataframe which contains input and output features
             previous_results : dict, optional
                 path of file which contains xy values.
+            process_results : bool
 
         Returns
         --------
@@ -697,7 +701,8 @@ class OptimizePipeline(object):
             objective_fn=self.parent_objective,
             num_iterations=self.parent_iterations,
             opt_path=self.path,
-            verbosity = 0
+            verbosity = 0,
+            process_results=process_results,
         )
 
         if previous_results is not None:
@@ -1094,7 +1099,7 @@ class OptimizePipeline(object):
 
             if model_name in model:
                 # find out the metric value at iter_num
-                metric_val = self.metrics_[metric_name][int(iter_num)-1]
+                metric_val = self.metrics_[metric_name][int(iter_num)]
                 metric_val = round(metric_val, 4)
 
                 model_container[metric_val] = iter_suggestions
@@ -1128,42 +1133,47 @@ class OptimizePipeline(object):
             - a dictionary of val_scores on test data for each model
             - a dictionary of metrics being monitored for  each model on test data.
         """
-        val_scores = {}
-        metrics = {}
+        if self.baseline_results_ is None:
+            val_scores = {}
+            metrics = {}
 
-        for model_name in self.models:
+            for model_name in self.models:
 
-            model_config = model_name
-            if self.category == "DL":
-                model_config = DL_MODELS[model_name](mode=self.mode, output_features=self.num_outputs)
+                model_config = model_name
+                if self.category == "DL":
+                    model_config = DL_MODELS[model_name](mode=self.mode, output_features=self.num_outputs)
 
-            # build model
-            model = self._build_model(
-                model=model_config,
-                val_metric=self.eval_metric,
-                prefix=f"{self.parent_prefix_}{SEP}baselines",
-                x_transformation=None,
-                y_transformation=None
-            )
+                # build model
+                model = self._build_model(
+                    model=model_config,
+                    val_metric=self.eval_metric,
+                    prefix=f"{self.parent_prefix_}{SEP}baselines",
+                    x_transformation=None,
+                    y_transformation=None
+                )
 
-            model.fit_on_all_training_data(data=data)
+                model.fit_on_all_training_data(data=data)
 
-            t, p = model.predict(return_true=True)
-            errors = self.Metrics(t, p, multiclass=model.is_multiclass)
-            val_scores[model_name] = getattr(errors, self.eval_metric)(**METRICS_KWARGS.get(self.eval_metric, {}))
+                t, p = model.predict(return_true=True)
+                errors = self.Metrics(t, p, multiclass=model.is_multiclass)
+                val_scores[model_name] = getattr(errors, self.eval_metric)(**METRICS_KWARGS.get(self.eval_metric, {}))
 
-            _metrics = {}
-            for m in self.metrics_.keys():
-                _metrics[m] = getattr(errors, m)(**METRICS_KWARGS.get(m, {}))
-            metrics[model_name] = _metrics
+                _metrics = {}
+                for m in self.metrics_.keys():
+                    _metrics[m] = getattr(errors, m)(**METRICS_KWARGS.get(m, {}))
+                metrics[model_name] = _metrics
 
-        results = {
-            'val_scores': val_scores,
-            'metrics': metrics
-        }
+            results = {
+                'val_scores': val_scores,
+                'metrics': metrics
+            }
 
-        with open(os.path.join(self.path, "baselines", "results.json"), 'w') as fp:
-            json.dump(results, fp, sort_keys=True, indent=4)
+            setattr(self, 'baseline_results_', results)
+
+            with open(os.path.join(self.path, "baselines", "results.json"), 'w') as fp:
+                json.dump(results, fp, sort_keys=True, indent=4)
+        else:
+            val_scores, metrics = self.baseline_results_.values()
 
         return val_scores, metrics
 
@@ -1205,6 +1215,7 @@ class OptimizePipeline(object):
         metric_name = metric_name or self.eval_metric
 
         _, bl_results = self.baseline_results(data=data)
+        plt.close('all')
 
         bl_models = {}
         for k, v in bl_results.items():
@@ -1316,6 +1327,9 @@ class OptimizePipeline(object):
             **self.taylor_plot_data_,  # simulations and trues as keyword arguments
             **kwargs
         )
+
+        ax.legend(loc=(1.01, 0.01))
+
         fname = os.path.join(self.path, "taylor_plot")
 
         if save:
@@ -1964,6 +1978,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         else:
             ax = bar_chart(list(models.values()),
                            labels,
+                           xlabel=metric_name,
                            sort=True,
                            show=False,
                            **kwargs)
