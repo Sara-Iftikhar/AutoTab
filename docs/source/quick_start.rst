@@ -57,10 +57,10 @@ This covers all scikit-learng models, catboost, lightgbm and xgboost
 
 .. code-block:: python
 
-    >>> from ai4water.datasets import busan_beach
+    >>> from ai4water.datasets import MtropicsLaos
     >>> from autotab import OptimizePipeline
 
-    >>> data = busan_beach()
+    >>> data = MtropicsLaos().make_classification(lookback_steps=1)
     >>> input_features = data.columns.tolist()[0:-1]
     >>> output_features = data.columns.tolist()[-1:]
 
@@ -95,10 +95,10 @@ This covers all scikit-learng models, catboost, lightgbm and xgboost
 
     >>>     pl.fit(data=data)
 
-    >>>     pl.post_fit()
+    >>>     pl.post_fit(data=data)
 
 deep learning models (regression)
-=======================================================
+=================================
 
 This covers MLP, LSTM, CNN, CNNLSTM, TFT, TCN, LSTMAutoEncoder for regression .
 Each model can consist of stacks of layers. For example MLP can consist of
@@ -132,10 +132,10 @@ stacks of Dense layers. The number of layers are also optimized.
 
     >>>     pl.fit(data=data)
 
-    >>>     pl.post_fit()
+    >>>     pl.post_fit(data=data)
 
 deep learning models (classification)
-===========================================================
+=====================================
 
 This covers MLP, LSTM, CNN, CNNLSTM, TFT, TCN, LSTMAutoEncoder for classification problem.
 Each model can consist of stacks of layers. For example MLP can consist of
@@ -143,24 +143,24 @@ stacks of Dense layers. The number of layers are also optimized.
 
 .. code-block:: python
 
-    >>> from ai4water.datasets import busan_beach
+    >>> from ai4water.datasets import MtropicsLaos
     >>> from autotab import OptimizePipeline
 
-    >>> data = busan_beach()
+    >>> data = MtropicsLaos().make_classification(lookback_steps=1,)
     >>> input_features = data.columns.tolist()[0:-1]
     >>> output_features = data.columns.tolist()[-1:]
 
     >>> pl = OptimizePipeline(
-    ...          mode="classification",
-    ...          eval_metric="accuracy",
+    ...         mode="classification",
+    ...         eval_metric="accuracy",
     ...         inputs_to_transform=input_features,
     ...         outputs_to_transform=output_features,
-    ...         models=["MLP", "LSTM", "CNN", "CNNLSTM", "TFT", "TCN", "LSTMAutoEncoder"],
+    ...         models=["MLP", "CNN"],
     ...         parent_iterations=30,
     ...         child_iterations=12,
     ...         parent_algorithm='bayes',
     ...         child_algorithm='bayes',
-    ...         monitor=['accuracy'],
+    ...         monitor=['f1_score'],
     ...         input_features=input_features,
     ...         output_features=output_features,
     ...         split_random=True,
@@ -168,9 +168,32 @@ stacks of Dense layers. The number of layers are also optimized.
     ...         epochs=100,
     ...     )
 
-    >>>     pl.fit(data=data)
+    >>> pl.fit(data=data)
 
-    >>>     pl.post_fit()
+    >>> pl.post_fit(data=data)
 
 deep learning models (multi-class classification)
 ===========================================================
+
+For multi-class classification with neural networks, we must set
+``num_classes`` argument to some value greater than 2.
+
+.. code-block:: python
+    >>> from autotab import OptimizePipeline
+    >>> pl = OptimizePipeline(models=[
+    >>>         "MLP",
+    >>>     ],
+    >>>         input_features=multi_cls_input_features,
+    >>>         output_features=multi_cls_output_features,
+    >>>         parent_algorithm="bayes",
+    >>>         loss="categorical_crossentropy",
+    >>>         parent_iterations=10,
+    >>>         child_iterations=0,
+    >>>         epochs=20,
+    >>>         category="DL",
+    >>>         mode="classification",
+    >>>         num_classes = 4,
+    >>>         eval_metric="accuracy",
+    >>>         monitor="f1_score",
+    >>>         data=multi_cls_data,
+    >>>     )

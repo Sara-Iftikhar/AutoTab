@@ -1,3 +1,6 @@
+[![Documentation Status](https://readthedocs.org/projects/autotab/badge/?version=latest)](https://autotab.readthedocs.io/en/latest/?badge=latest)
+[![PyPI version](https://badge.fury.io/py/autotab.svg)](https://badge.fury.io/py/autotab)
+
 # autotab
 
 optimize pipeline for any machine learning mdoel using hierarchical optimization 
@@ -80,7 +83,7 @@ pl = OptimizePipeline(
 
 pl.fit(data=data)
 
-pl.post_fit()
+pl.post_fit(data=data)
 ```
 
 

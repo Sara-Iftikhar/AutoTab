@@ -15,7 +15,7 @@ warnings.warn = warn
 import matplotlib.pyplot as plt
 
 
-from utils import run_basic, build_basic, data
+from utils import run_basic, build_basic, rgr_data
 
 
 class TestRegression(unittest.TestCase):
@@ -49,7 +49,7 @@ class TestRegression(unittest.TestCase):
         """check that we can change the hpo iterations for a model"""
         pl = build_basic(models = ['Lasso', 'RandomForestRegressor'])
         pl.change_child_iteration({"RandomForestRegressor": 10})
-        pl.fit(data=data)
+        pl.fit(data=rgr_data)
         assert pl.child_val_scores_.shape[1] == 10
         pl.cleanup()
         return
@@ -69,14 +69,14 @@ class TestRegression(unittest.TestCase):
         space = {'max_depth': [5,10, 15, 20],
                  'n_estimators': [5,10, 15, 20]}
         pl.update_model_space({"RandomForestRegressor": space})
-        pl.fit(data=data)
+        pl.fit(data=rgr_data)
         assert len(pl.model_space['RandomForestRegressor']['param_space'])==2
         return
 
     def test_baseline_results(self):
         pl = build_basic()
         pl.reset()
-        val_scores, metrics = pl.baseline_results(data=data)
+        val_scores, metrics = pl.baseline_results(data=rgr_data)
         assert isinstance(val_scores, dict)
         assert len(val_scores) == 4
         assert isinstance(metrics, dict)
@@ -95,7 +95,7 @@ class TestRegression(unittest.TestCase):
             "RandomForestRegressor",
             "HistGradientBoostingRegressor",
         ], child_iterations=0)
-        ax = pl.dumbbell_plot('r2', show=self.show)
+        ax = pl.dumbbell_plot(data=rgr_data, metric_name='r2', show=self.show)
         assert isinstance(ax, plt.Axes)
         pl.cleanup()
         return
@@ -133,14 +133,14 @@ class TestRegression(unittest.TestCase):
     def test_tpe(self):
         pl = run_basic(parent_algorithm="tpe",
         parent_iterations=12, eval_metric="nse", child_iterations=0)
-        pl.post_fit(show=False)
+        pl.post_fit(data=rgr_data, show=False)
         pl.cleanup()
 
         return
 
     def test_single_model(self):
         pl = run_basic(models=["Lasso"])
-        pl.post_fit(show=False)
+        pl.post_fit(data=rgr_data, show=False)
         pl.cleanup()
         return
 

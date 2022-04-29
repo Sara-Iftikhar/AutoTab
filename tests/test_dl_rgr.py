@@ -1,17 +1,18 @@
+
+import warnings
 def warn(*args, **kwargs): pass
 warnings.warn = warn
 
 import unittest
-import site
-site.addsitedir("D:\\mytools\\AI4Water")
 
-from utils import run_basic, build_basic
+from utils import run_basic, rgr_data
+
 
 class TestMisc(unittest.TestCase):
 
     def test_1model_both_xy_trans(self):
         """test a specifc val metric"""
-        run_basic(models = [
+        pl = run_basic(models = [
             "MLP",
         ],
             parent_iterations=10,
@@ -20,6 +21,7 @@ class TestMisc(unittest.TestCase):
             epochs=20,
             category="DL",
         )
+        pl.post_fit(data=rgr_data, show=False)
 
         return
 

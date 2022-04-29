@@ -25,12 +25,23 @@ from ai4water.hyperopt import Categorical, HyperOpt, Integer, Real
 from ai4water.models import MLP, CNN, LSTM, CNNLSTM, LSTMAutoEncoder, TFT, TCN
 from ai4water.experiments.utils import regression_space, classification_space, dl_space
 
+assert ai4water.__version__ == "1.02"
+
 
 # in order to unify the use of metrics
 Metrics = {
     'regression': lambda t, p, multiclass=False, **kwargs: RegressionMetrics(t, p, **kwargs),
     'classification': lambda t, p, multiclass=False, **kwargs: ClassificationMetrics(t, p,
         multiclass=multiclass, **kwargs)
+}
+
+METRICS_KWARGS = {
+    'accuracy': {},
+    "cross_entropy": {},
+    'f1_score': {"average": "macro"},
+    "precision": {"average": "macro"},
+    "recall": {"average": "macro"},
+    "specificity": {"average": "macro"},
 }
 
 DL_MODELS = {
@@ -147,7 +158,7 @@ class OptimizePipeline(object):
             child_iterations: int = 25,
             parent_algorithm: str = "bayes",
             child_algorithm: str = "bayes",
-            eval_metric: str = "mse",
+            eval_metric: str = None,
             cv_parent_hpo: bool = None,
             cv_child_hpo: bool = None,
             monitor: Union[list, str] = None,
@@ -232,18 +243,18 @@ class OptimizePipeline(object):
                 The parent and child hpo loop optimizes/improves this metric. This metric is
                 calculated on valdation data. If cross validation is performed then
                 this metric is calculated using cross validation.
-            cv_parent_hpo : bool, optional
+            cv_parent_hpo : bool, optional (default=False)
                 Whether we want to apply cross validation in parent hpo loop or not?.
                 If given, the parent hpo loop will optimize the cross validation score.
                 The  model is fitted on whole training data (training+validation) after
                 cross validation and the metrics printed (other than parent_val_metric)
                 are calculated on the based the updated model i.e. the one fitted on
                 whole training (trainning+validation) data.
-            cv_child_hpo :
+            cv_child_hpo : bool, optional (default=False)
                 Whether we want to apply cross validation in child hpo loop or not?.
                 If False, then val_score will be caclulated on validation data.
                 The type of cross validator used is taken from model.config['cross_validator']
-            monitor :
+            monitor : Union[str, list], optional, (default=None)
                 Nmaes of performance metrics to monitor in parent hpo loop. If None,
                 then R2 is monitored for regression and accuracy for classification.
             mode : str, optional (default="regression")
@@ -303,6 +314,12 @@ class OptimizePipeline(object):
         self._child_iters = {model: child_iterations for model in self.models}
         self.parent_algorithm = parent_algorithm
         self.child_algorithm = child_algorithm
+
+        if eval_metric is None:
+            if self.mode == "regression":
+                eval_metric = "mse"
+            else:
+                eval_metric = "accuracy"
         self.eval_metric = eval_metric
         self.cv_parent_hpo = cv_parent_hpo
         self.cv_child_hpo = cv_child_hpo
@@ -762,8 +779,9 @@ class OptimizePipeline(object):
         }
 
         val_score = self._fit_and_eval(_model,
-                                       self.cv_parent_hpo,
-                                       self.eval_metric,
+                                       data=self.data_,
+                                       cross_validate=self.cv_parent_hpo,
+                                       metric_to_compute=self.eval_metric,
                                        eval_metrics=True,
                                        )
 
@@ -811,8 +829,10 @@ class OptimizePipeline(object):
                 prefix=f"{self.parent_prefix_}{SEP}{self.CHILD_PREFIX}",
             )
 
-            val_score = self._fit_and_eval(_model, self.cv_child_hpo,
-                                           self.eval_metric)
+            val_score = self._fit_and_eval(_model,
+                                           data=self.data_,
+                                           cross_validate=self.cv_child_hpo,
+                                           metric_to_compute=self.eval_metric)
 
             # populate all child val scores
             self.child_val_scores_[self.parent_iter_-1, self.child_iter_-1] = val_score
@@ -901,7 +921,9 @@ class OptimizePipeline(object):
         return model
 
     def _fit_and_eval(
-            self, model,
+            self,
+            model,
+            data,
             cross_validate,
             metric_to_compute,
             eval_metrics:bool = False,
@@ -909,12 +931,32 @@ class OptimizePipeline(object):
         """fits the model and evaluates it and returns the score"""
         if cross_validate:
             # val_score will be obtained by performing cross validation
-            val_score = model.cross_val_score(data=self.data_, refit=True)
+            val_scores = model.cross_val_score(
+                data=self.data_,
+                scoring=[self.eval_metric] + self.monitor,
+                refit=False)
+
+            val_score = val_scores.pop(0)
+
+            for (k, v), pm_val in zip(self.metrics_.items(), val_scores):
+
+                v[self.parent_iter_] = pm_val
+
+                func = compare_func1(METRIC_TYPES[k])
+                best_so_far = func(self.metrics_best_.loc[:self.parent_iter_, k])
+
+                best_so_far = fill_val(METRIC_TYPES[k], best_so_far)
+
+                func = compare_func(METRIC_TYPES[k])
+                if func(pm_val, best_so_far):
+
+                    self.metrics_best_.loc[self.parent_iter_-1, k] = pm_val
         else:
             # train the model and evaluate it to calculate val_score
             model.fit(data=self.data_)
             val_score = self._eval_model_manually(
                 model,
+                data,
                 metric_to_compute,
                 eval_metrics=eval_metrics
             )
@@ -1065,7 +1107,7 @@ class OptimizePipeline(object):
 
         return sorted_container[-1]
 
-    def baseline_results(self, data=None) -> tuple:
+    def baseline_results(self, data) -> tuple:
         """
         Returns default performance of all models.
 
@@ -1077,7 +1119,7 @@ class OptimizePipeline(object):
         Parameters
         ----------
             data :
-                If given, will override data given during .fit call.
+                The data to use,
 
         Returns
         -------
@@ -1089,32 +1131,31 @@ class OptimizePipeline(object):
         val_scores = {}
         metrics = {}
 
-        for _model in self.models:
+        for model_name in self.models:
 
+            model_config = model_name
             if self.category == "DL":
-                _model = DL_MODELS[_model]
+                model_config = DL_MODELS[model_name](mode=self.mode, output_features=self.num_outputs)
 
             # build model
             model = self._build_model(
-                model=_model,
+                model=model_config,
                 val_metric=self.eval_metric,
                 prefix=f"{self.parent_prefix_}{SEP}baselines",
                 x_transformation=None,
                 y_transformation=None
             )
 
-            if data is None:
-                data = self.data_
             model.fit_on_all_training_data(data=data)
 
             t, p = model.predict(return_true=True)
             errors = self.Metrics(t, p, multiclass=model.is_multiclass)
-            val_scores[_model] = getattr(errors, self.eval_metric)()
+            val_scores[model_name] = getattr(errors, self.eval_metric)(**METRICS_KWARGS.get(self.eval_metric, {}))
 
             _metrics = {}
             for m in self.metrics_.keys():
-                _metrics[m] = getattr(errors, m)()
-            metrics[_model] = _metrics
+                _metrics[m] = getattr(errors, m)(**METRICS_KWARGS.get(m, {}))
+            metrics[model_name] = _metrics
 
         results = {
             'val_scores': val_scores,
@@ -1128,6 +1169,7 @@ class OptimizePipeline(object):
 
     def dumbbell_plot(
             self,
+            data,
             metric_name: str = None,
             figsize: tuple = None,
             show: bool = True,
@@ -1135,10 +1177,13 @@ class OptimizePipeline(object):
     ) -> plt.Axes:
         """
         Generate Dumbbell_ plot as comparison of baseline models with
-        optimized models.
+        optimized models. Not that this command will train all the considered models,
+        so this can be expensive.
 
         Parameters
         ----------
+            data :
+                The data to use
             metric_name: str
                 The name of metric with respect to which the models have
                 to be compared. If not given, the evaluation metric is used.
@@ -1159,7 +1204,7 @@ class OptimizePipeline(object):
         """
         metric_name = metric_name or self.eval_metric
 
-        _, bl_results = self.baseline_results()
+        _, bl_results = self.baseline_results(data=data)
 
         bl_models = {}
         for k, v in bl_results.items():
@@ -1220,6 +1265,7 @@ class OptimizePipeline(object):
 
     def taylor_plot(
             self,
+            data,
             plot_bias: bool = True,
             figsize: tuple = None,
             show: bool = True,
@@ -1233,6 +1279,8 @@ class OptimizePipeline(object):
 
         Parameters
         ----------
+            data :
+                the data to use
             plot_bias : bool, optional
                 whether to plot the bias or not
             figsize : tuple, optional
@@ -1256,7 +1304,7 @@ class OptimizePipeline(object):
         """
 
         if self.taylor_plot_inputs_['observations']['test'] is None:
-            self.bfe_all_best_models()
+            self.bfe_all_best_models(data=data)
 
         ax = taylor_plot(
             show=False,
@@ -1514,6 +1562,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
     def be_best_model_from_config(
             self,
+            data,
             metric_name: str = None,
             model_name: str = None
     )->Model:
@@ -1521,6 +1570,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         Parameters
         ----------
+            data :
+                the data to use
             metric_name : str
                 the metric with respect to which the best model is fetched
                 and then built/evaluated. If not given, the best model is
@@ -1548,13 +1599,14 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                              list(pipeline['model'].keys())[0])
         model.update_weights(wpath)
 
-        self._populate_results(model)
+        self._populate_results(model, data=data)
 
         return model
 
     def bfe_model_from_scratch(
             self,
             iter_num: int,
+            data,
     )->Model:
         """
         Builds, trains and evalutes the model from a specific iteration.
@@ -1564,6 +1616,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         ----------
             iter_num : int
                 iteration number from which to choose the model
+            data :
+                the data to use
 
         Returns
         -------
@@ -1574,6 +1628,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         model = self._build_and_eval_from_scratch(
             model=pipeline['model'],
+            data=data,
             x_transformation=pipeline['x_transformation'],
             y_transformation=pipeline['y_transformation'],
             prefix=prefix
@@ -1582,6 +1637,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
     def bfe_best_model_from_scratch(
             self,
+            data,
             metric_name: str = None,
             model_name: str = None
     )->Model:
@@ -1592,6 +1648,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         Parameters
         ----------
+            data :
+                the data to use
             metric_name : str
                 the metric with respect to which the best model is searched
                 and then built/trained/evaluated. If None, the best model is
@@ -1623,6 +1681,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         model = self._build_and_eval_from_scratch(
             model=pipeline['model'],
+            data=data,
             x_transformation=pipeline['x_transformation'],
             y_transformation=pipeline['y_transformation'],
             prefix=prefix)
@@ -1632,6 +1691,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
     def _build_and_eval_from_scratch(
             self,
             model,
+            data,
             x_transformation,
             y_transformation,
             prefix,
@@ -1650,22 +1710,23 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         model.dh_.to_disk(model.path)
 
-        self._populate_results(model, model_name=model_name)
+        self._populate_results(model, data, model_name=model_name)
 
         return model
 
     def _populate_results(
             self,
             model,
+            data,
             model_name=None
     ) -> None:
         """evaluates/makes predictions from model on traiing/validation/test data.
         if model_name is given, model's predictions are saved in 'taylor_plot_inputs_'
         dictionary
         """
-        model.predict(data='training', metrics="all")
-        model.predict(data='validation', metrics="all")
-        t, p = model.predict(data='test', metrics="all", return_true=True)
+        model.predict_on_training_data(data=data, metrics="all")
+        model.predict_on_validation_data(data=data, metrics="all")
+        t, p = model.predict_on_test_data(data=data, metrics="all", return_true=True)
 
         if model_name:
             self.taylor_plot_inputs_['observations']['test'] = t
@@ -1719,6 +1780,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
     def bfe_all_best_models(
             self,
+            data,
             metric_name: str = None
     ) -> None:
         """
@@ -1727,6 +1789,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         Parameters
         ----------
+            data :
+                the data to use
             metric_name : str
                 the name of metric to determine best version of a model. If not given,
                 parent_val_metric will be used.
@@ -1748,8 +1812,18 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
             prefix = f"{self.path}{SEP}results_from_scratch{SEP}{met_name}_{metric_val}_{model}"
 
+            model_config = pipeline['model']
+
+            if self.category == "DL":
+                model_name = list(model_config.keys())[0]
+                kwargs = list(model_config.values())[0]
+
+                model_config = DL_MODELS[model_name](mode=self.mode,
+                                                     output_features=self.num_outputs,
+                                                     **kwargs)
             _ = self._build_and_eval_from_scratch(
-                model=pipeline['model'],
+                model=model_config,
+                data=data,
                 x_transformation=pipeline['x_transformation'],
                 y_transformation=pipeline['y_transformation'],
                 prefix=prefix,
@@ -1758,11 +1832,13 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         return
 
-    def post_fit(self, show:bool = True) -> None:
+    def post_fit(self, data, show:bool = True) -> None:
         """post processing of results to draw dumbell plot and taylor plot.
 
         Parameters
         ----------
+        data :
+            the data to use
         show : bool, optional
             whether to show the plots or not
 
@@ -1772,12 +1848,12 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         """
 
-        self.bfe_all_best_models()
-        self.dumbbell_plot(metric_name=self.eval_metric, show=show)
+        self.bfe_all_best_models(data=data)
+        self.dumbbell_plot(data=data, metric_name=self.eval_metric, show=show)
 
         # following plots only make sense if more than one models are tried
         if self._optimize_model:
-            self.taylor_plot(show=show)
+            self.taylor_plot(data=data, show=show)
             self.compare_models(show=show)
             self.compare_models(plot_type="bar_chart", show=show)
 
@@ -1884,15 +1960,17 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         return ax
 
-    def _eval_model_manually(self, model, metric: str, eval_metrics=False) -> float:
+    def _eval_model_manually(self, model, data, metric: str, eval_metrics=False) -> float:
         """evaluates the model"""
         # make prediction on validation data
-        t, p = model.predict(data='validation',
-                             return_true=True,
-                             process_results=False)
+        t, p = model.predict_on_validation_data(data=data, return_true=True, process_results=False)
 
         if len(p) == p.size:
             p = p.reshape(-1, 1)  # TODO, for cls, Metrics do not accept (n,) array
+
+        if self.mode=="classification":
+            t = np.argmax(t, axis=1)
+            p = np.argmax(p, axis=1)
 
         errors = self.Metrics(
             t,
@@ -1917,16 +1995,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         if eval_metrics:
             # calculate all additional performance metrics which are being monitored
 
-            errors = self.Metrics(
-                t,
-                p,
-                remove_zero=True,
-                remove_neg=True,
-                multiclass=model.is_multiclass
-            )
-
             for k, v in self.metrics_.items():
-                pm = getattr(errors, k)()
+                pm = getattr(errors, k)(**METRICS_KWARGS.get(k, {}))
                 v[self.parent_iter_] = pm
 
                 func = compare_func1(METRIC_TYPES[k])

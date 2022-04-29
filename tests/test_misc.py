@@ -1,7 +1,7 @@
 
 import unittest
 
-from utils import run_basic, build_basic
+from utils import run_basic, build_basic, rgr_data
 
 
 class TestMisc(unittest.TestCase):
@@ -13,6 +13,15 @@ class TestMisc(unittest.TestCase):
 
         return
 
+    def test_cv(self):
+        run_basic(eval_metric="r2",
+                  cv_parent_hpo=True,
+                  parent_iterations=10,
+                  child_iterations=0,
+                  cross_validator={"KFold": {"n_splits": 5}}
+                  )
+        return
+
     def test_model_names(self):
         """Should raise value error if some model is repeated"""
         self.assertRaises(ValueError, build_basic,
@@ -20,7 +29,7 @@ class TestMisc(unittest.TestCase):
 
     def test_zero_child_iter(self):
         pl = run_basic(parent_iterations=14, child_iterations=0)
-        pl.post_fit(show=False)
+        pl.post_fit(data=rgr_data, show=False)
         pl.cleanup()
         return
 
@@ -32,7 +41,7 @@ class TestMisc(unittest.TestCase):
             },
             child_iterations=0
         )
-        pl.post_fit(show=False)
+        pl.post_fit(data=rgr_data, show=False)
         pl.cleanup()
 
 
