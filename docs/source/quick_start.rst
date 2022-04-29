@@ -21,17 +21,17 @@ This covers all scikit-learng models, catboost, lightgbm and xgboost
     >>> pl = OptimizePipeline(
     ...         inputs_to_transform=input_features,
     ...         outputs_to_transform=output_features,
-    ...             models=["ExtraTreeClassifier",
-    ...                         "RandomForestClassifier",
-    ...                         "XGBClassifier",
-    ...                         "CatBoostClassifier",
-    ...                         "LGBMClassifier",
-    ...                         "GradientBoostingClassifier",
-    ...                         "HistGradientBoostingClassifier",
-    ...                         "ExtraTreesClassifier",
-    ...                         "RidgeClassifier",
-    ...                         "SVC",
-    ...                         "KNeighborsClassifier",
+    ...             models=["LinearRegression",
+    ...        "LassoLars",
+    ...        "Lasso",
+    ...        "RandomForestRegressor",
+    ...        "HistGradientBoostingRegressor",
+    ...         "CatBoostRegressor",
+    ...         "XGBRegressor",
+    ...         "LGBMRegressor",
+    ...         "GradientBoostingRegressor",
+    ...         "ExtraTreeRegressor",
+    ...         "ExtraTreesRegressor"
     ...                         ],
     ...         parent_iterations=30,
     ...         child_iterations=12,
@@ -42,13 +42,11 @@ This covers all scikit-learng models, catboost, lightgbm and xgboost
     ...         input_features=input_features,
     ...         output_features=output_features,
     ...         split_random=True,
-    ...         train_fraction=1.0,
-    ...         epochs=100,
     ...     )
 
-    >>>     pl.fit(data=data)
+    >>> pl.fit(data=data)
 
-    >>>     pl.post_fit()
+    >>> pl.post_fit(data=data)
 
 machine learning models (classification)
 ==============================================================
@@ -89,20 +87,21 @@ This covers all scikit-learng models, catboost, lightgbm and xgboost
     ...         input_features=input_features,
     ...         output_features=output_features,
     ...         split_random=True,
-    ...         train_fraction=1.0,
-    ...         epochs=100,
     ...     )
 
-    >>>     pl.fit(data=data)
+    >>> pl.fit(data=data)
 
-    >>>     pl.post_fit(data=data)
+    >>> pl.post_fit(data=data)
 
 deep learning models (regression)
 =================================
 
 This covers MLP, LSTM, CNN, CNNLSTM, TFT, TCN, LSTMAutoEncoder for regression .
 Each model can consist of stacks of layers. For example MLP can consist of
-stacks of Dense layers. The number of layers are also optimized.
+stacks of Dense layers. The number of layers are also optimized. When using
+deep learning models, also set the value fo ``epochs`` because the default
+value is 14 which is too small for a deep learning model. Also consider
+setting values for ``batch_size`` and ``lr``.
 
 .. code-block:: python
 
@@ -126,13 +125,12 @@ stacks of Dense layers. The number of layers are also optimized.
     ...         input_features=input_features,
     ...         output_features=output_features,
     ...         split_random=True,
-    ...         train_fraction=1.0,
     ...         epochs=100,
     ...     )
 
-    >>>     pl.fit(data=data)
+    >>> pl.fit(data=data)
 
-    >>>     pl.post_fit(data=data)
+    >>> pl.post_fit(data=data)
 
 deep learning models (classification)
 =====================================
@@ -164,7 +162,6 @@ stacks of Dense layers. The number of layers are also optimized.
     ...         input_features=input_features,
     ...         output_features=output_features,
     ...         split_random=True,
-    ...         train_fraction=1.0,
     ...         epochs=100,
     ...     )
 

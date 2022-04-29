@@ -208,7 +208,7 @@ remaining results can be saved and analyzed by using these commands.
 
 .. code-block:: python
     >>> pl.save_results()
-    >>> pl.post_fit()
+    >>> pl.post_fit(data=data)
 
 what is ``config.json`` file
 ============================
