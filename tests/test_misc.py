@@ -1,5 +1,11 @@
+import warnings
+def warn(*args, **kwargs): pass
+warnings.warn = warn
 
+import os
 import unittest
+
+from autotab import OptimizePipeline
 
 from utils import run_basic, build_basic, rgr_data
 
@@ -22,10 +28,21 @@ class TestMisc(unittest.TestCase):
                   )
         return
 
+    def test_from_config(self):
+        pl = run_basic(
+            eval_metric="r2",
+            child_iterations=0,
+        )
+
+        pl2 = OptimizePipeline.from_config_file(os.path.join(pl.path, "config.json"))
+        pl2.post_fit(data=rgr_data)
+        return
+
     def test_model_names(self):
         """Should raise value error if some model is repeated"""
         self.assertRaises(ValueError, build_basic,
                           models=['Lasso', 'LassoLars', 'LassoCV', 'Lasso'])
+        return
 
     def test_zero_child_iter(self):
         pl = run_basic(parent_iterations=14, child_iterations=0)
@@ -43,6 +60,7 @@ class TestMisc(unittest.TestCase):
         )
         pl.post_fit(data=rgr_data, show=False)
         pl.cleanup()
+        return
 
 
 if __name__ == "__main__":

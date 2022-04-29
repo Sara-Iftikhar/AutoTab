@@ -387,8 +387,7 @@ class OptimizePipeline(object):
                 assert i in self.output_features
         self._out_to_transform = x
 
-    @property
-    def path(self):
+    def maybe_make_path(self):
         _path = os.path.join(os.getcwd(), "results", self.parent_prefix_)
         if not os.path.exists(_path):
             os.makedirs(_path)
@@ -643,12 +642,10 @@ class OptimizePipeline(object):
 
         # create container to store data for Taylor plot
         # It will be populated during postprocessing
-        self.taylor_plot_inputs_ = {
+        self.taylor_plot_data_ = {
             'simulations': {"test": {}},
             'observations': {"test": None}
         }
-
-        self.parent_prefix_ = f"pipeline_opt_{dateandtime_now()}"
 
         self._save_config()  # will also make path if it does not already exists
 
@@ -688,6 +685,9 @@ class OptimizePipeline(object):
         """
 
         self.data_ = data
+
+        self.parent_prefix_ = f"pipeline_opt_{dateandtime_now()}"
+        self.path = self.maybe_make_path()
 
         self.reset()
 
@@ -1094,7 +1094,7 @@ class OptimizePipeline(object):
 
             if model_name in model:
                 # find out the metric value at iter_num
-                metric_val = self.metrics_[metric_name][iter_num]
+                metric_val = self.metrics_[metric_name][int(iter_num)-1]
                 metric_val = round(metric_val, 4)
 
                 model_container[metric_val] = iter_suggestions
@@ -1303,7 +1303,7 @@ class OptimizePipeline(object):
             https://doi.org/10.1029/2000JD900719
         """
 
-        if self.taylor_plot_inputs_['observations']['test'] is None:
+        if self.taylor_plot_data_['observations']['test'] is None:
             self.bfe_all_best_models(data=data)
 
         ax = taylor_plot(
@@ -1313,7 +1313,7 @@ class OptimizePipeline(object):
             cont_kws={},
             grid_kws={},
             figsize=figsize,
-            **self.taylor_plot_inputs_,  # simulations and trues as keyword arguments
+            **self.taylor_plot_data_,  # simulations and trues as keyword arguments
             **kwargs
         )
         fname = os.path.join(self.path, "taylor_plot")
@@ -1325,12 +1325,12 @@ class OptimizePipeline(object):
             plt.show()
 
         # save taylor plot data as csv file, first make a dataframe
-        sim = self.taylor_plot_inputs_['simulations']['test']
+        sim = self.taylor_plot_data_['simulations']['test']
         data = np.column_stack([v.reshape(-1, ) for v in sim.values()])
         df = pd.DataFrame(data, columns=list(sim.keys()))
-        df['observations'] = self.taylor_plot_inputs_['observations']['test']
+        df['observations'] = self.taylor_plot_data_['observations']['test']
 
-        df.to_csv(os.path.join(self.path, "taylor_data.csv"))
+        df.to_csv(os.path.join(self.path, "taylor_data.csv"), index=False)
 
         return ax
 
@@ -1367,7 +1367,7 @@ class OptimizePipeline(object):
         fpath = os.path.join(self.path, "errors.csv")
         pd.DataFrame(errors,
                      columns=list(self.metrics_.keys()) + ['val_scores']
-                     ).to_csv(fpath)
+                     ).to_csv(fpath, index_label="iterations")
 
         # save results of child iterations as csv file
         fpath = os.path.join(self.path, "child_val_scores.csv")
@@ -1540,8 +1540,25 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         fpath = os.path.join(path, "errors.csv")
         if os.path.exists(fpath):
-            errors = pd.read_csv(fpath)
+            errors = pd.read_csv(fpath, index_col="iterations")
+
+            # don't put val_scores in metrics_
+            cls.val_scores_ = errors.pop('val_scores')
+
             cls.metrics_ = errors.to_dict()
+
+        cls.taylor_plot_data_ = {
+                'simulations': {"test": {}},
+                'observations': {"test": None}
+            }
+
+        fpath = os.path.join(path, "taylor_data.csv")
+        if os.path.exists(fpath):
+            taylor_data = pd.read_csv(fpath)
+            cls.taylor_plot_data_['observations']['test'] = taylor_data.pop('observations')
+
+        cls.parent_prefix_ = os.path.basename(path)
+        cls.path = path
 
         return cls(**config['init_paras'], **model_kwargs)
 
@@ -1644,7 +1661,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         """
         Builds, Trains and Evaluates the **best model** with respect to metric from
         scratch. The model is trained on 'training'+'validation' data. Running
-        this mothod will also populate ``taylor_plot_inputs_`` dictionary.
+        this mothod will also populate ``taylor_plot_data_`` dictionary.
 
         Parameters
         ----------
@@ -1698,7 +1715,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             model_name=None,
     ) -> "Model":
         """builds and evaluates the model from scratch. If model_name is given,
-        model's predictions are saved in 'taylor_plot_inputs_' dictionary
+        model's predictions are saved in 'taylor_plot_data_' dictionary
         """
         model = self._build_model(model=model,
                                   x_transformation=x_transformation,
@@ -1706,7 +1723,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                                   prefix=prefix,
                                   val_metric=self.eval_metric)
 
-        model.fit_on_all_training_data(data=self.data_)
+        model.fit_on_all_training_data(data=data)
 
         model.dh_.to_disk(model.path)
 
@@ -1721,7 +1738,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             model_name=None
     ) -> None:
         """evaluates/makes predictions from model on traiing/validation/test data.
-        if model_name is given, model's predictions are saved in 'taylor_plot_inputs_'
+        if model_name is given, model's predictions are saved in 'taylor_plot_data_'
         dictionary
         """
         model.predict_on_training_data(data=data, metrics="all")
@@ -1729,8 +1746,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         t, p = model.predict_on_test_data(data=data, metrics="all", return_true=True)
 
         if model_name:
-            self.taylor_plot_inputs_['observations']['test'] = t
-            self.taylor_plot_inputs_['simulations']['test'][model_name] = p
+            self.taylor_plot_data_['observations']['test'] = t
+            self.taylor_plot_data_['simulations']['test'][model_name] = p
 
         return
 
