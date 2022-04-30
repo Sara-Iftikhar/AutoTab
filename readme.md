@@ -20,43 +20,15 @@ or using setup file, go to folder where this repoitory is downloaded
 
     python setup.py install
 
-## optimizing pipeline for machine learning models
 
-This covers all scikit-learng models, catboost, lightgbm and xgboost
-
-```python
-from ai4water.datasets import busan_beach
-from autotab import OptimizePipeline
-
-data = busan_beach()
-
-pl = OptimizePipeline(
-    inputs_to_transform=data.columns.tolist()[0:-1],
-    parent_iterations=30,
-    child_iterations=12,
-    parent_algorithm='bayes',
-    child_algorithm='bayes',
-    eval_metric='mse',
-    monitor=['r2', 'nse'],
-
-    input_features=data.columns.tolist()[0:-1],
-    output_features=data.columns.tolist()[-1:],
-    split_random=True,
-    train_fraction=1.0,
-)
-
-pl.fit(data=data)
-
-pl.post_fit()
-```
-
-## optimizing pipeline for deep learning models
-This covers MLP, LSTM, CNN, CNNLSTM, TFT, TCN, LSTMAutoEncoder.
-Each model can consist of stacks of layers. For example MLP can consist of 
-stacks of Dense layers. The number of layers are also optimized.
+# Example
+Click here to [open this example in binder](https://nbviewer.jupyter.org/github/AtrCheema/AI4Water/blob/dev/examples/paper/compare_ml.ipynb)
+or cick here to
+<a href="https://colab.research.google.com/github/Sara-Iftikhar/AutoTab/blob/master/notebooks/regression_cv.ipynb" target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="open in colab"/></a>
 
 ```python
 from ai4water.datasets import busan_beach
+from skopt.plots import plot_objective
 from autotab import OptimizePipeline
 
 data = busan_beach()
@@ -64,47 +36,121 @@ input_features = data.columns.tolist()[0:-1]
 output_features = data.columns.tolist()[-1:]
 
 pl = OptimizePipeline(
-    inputs_to_transform=input_features,
-    outputs_to_transform=output_features,    
-    models=["MLP"],
-    parent_iterations=30,
-    child_iterations=12,
+    inputs_to_transform=data.columns.tolist()[0:-1],
+    parent_iterations=400,
+    child_iterations=20,
     parent_algorithm='bayes',
-    child_algorithm='bayes',
+    child_algorithm="random",
+    cv_parent_hpo=True,
     eval_metric='mse',
     monitor=['r2', 'nse'],
+    input_transformations = ['minmax', 'zscore', 'log', 'log10', 'sqrt', 'robust', 'quantile'],
+    output_transformations = ['minmax', 'zscore', 'log', 'log10', 'sqrt', 'robust', 'quantile'],
+    models=[ "LinearRegression",
+            "LassoLars",
+            "Lasso",
+            "RandomForestRegressor",
+            "HistGradientBoostingRegressor",
+             "CatBoostRegressor",
+             "XGBRegressor",
+             "LGBMRegressor",
+             "GradientBoostingRegressor",
+             "ExtraTreeRegressor",
+             "ExtraTreesRegressor"
+             ],
 
-    input_features=input_features,
-    output_features=output_features,
+    input_features=data.columns.tolist()[0:-1],
+    output_features=data.columns.tolist()[-1:],
+    cross_validator={"KFold": {"n_splits": 5}},
     split_random=True,
-    train_fraction=1.0,
-    epochs=100, 
 )
+```
 
-pl.fit(data=data)
+```python
+results = pl.fit(data=data, process_results=False)
+```
 
-pl.post_fit(data=data)
+```python
+pl.optimizer._plot_convergence(save=False)
+```
+
+```python
+pl.optimizer._plot_parallel_coords(figsize=(16, 8), save=False)
+```
+
+```python
+_ = pl.optimizer._plot_distributions(save=False)
+```
+
+```python
+pl.optimizer.plot_importance(save=False)
+```
+
+```python
+pl.optimizer.plot_importance(save=False, plot_type="bar")
+```
+
+```python
+_ = plot_objective(results)
+```
+
+```python
+pl.optimizer._plot_evaluations(save=False)
+```
+
+```python
+pl.optimizer._plot_edf(save=False)
+```
+
+```python
+pl.dumbbell_plot(data=data)
+```
+
+```python
+pl.dumbbell_plot(data, 'r2')
+```
+
+```python
+pl.taylor_plot(data=data, save=False, figsize=(6,6))
+```
+
+```python
+pl.compare_models()
+```
+
+```python
+pl.compare_models(plot_type="bar_chart")
+```
+
+```python
+pl.compare_models("r2", plot_type="bar_chart")
+```
+
+```python
+model = pl.bfe_best_model_from_scratch(data=data)
+```
+
+```python
+pl.evaluate_model(model, data=data)
+```
+
+```python
+pl.evaluate_model(model, data, 'nse')
+```
+
+```python
+pl.evaluate_model(model, data, 'r2')
 ```
 
 
-For classification make following adjustments while initializing the pipeline
 ```python
-pl = OptimizePipeline(
-    mode="classification",
-    eval_metric="accuracy",
+model = pl.bfe_best_model_from_scratch(data, 'r2')
+```
 
-    models=["ExtraTreeClassifier",
-            "RandomForestClassifier",
-            # "XGBClassifier",
-            # "CatBoostClassifier",
-            # "LGBMClassifier",
-            "GradientBoostingClassifier",
-            "HistGradientBoostingClassifier",
-            "ExtraTreesClassifier",
-            "RidgeClassifier",
-            "SVC",
-            "KNeighborsClassifier",
-            ],
+```python
+pl.evaluate_model(model, data, 'r2')
+```
 
-)
+```python
+print(f"all results are save in {pl.path} folder")
 ```

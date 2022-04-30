@@ -25,7 +25,7 @@ from ai4water.hyperopt import Categorical, HyperOpt, Integer, Real
 from ai4water.models import MLP, CNN, LSTM, CNNLSTM, LSTMAutoEncoder, TFT, TCN
 from ai4water.experiments.utils import regression_space, classification_space, dl_space
 
-assert ai4water.__version__ == "1.02"
+assert ai4water.__version__ >= "1.02"
 
 
 # in order to unify the use of metrics
@@ -904,7 +904,8 @@ class OptimizePipeline(object):
             val_metric: str,
             x_transformation,
             y_transformation,
-            prefix: Union[str, None]
+            prefix: Union[str, None],
+            verbosity:int = 0
     ) -> Model:
         """
         build the ai4water Model. When overwriting this method, the user
@@ -915,7 +916,7 @@ class OptimizePipeline(object):
         """
         model = Model(
             model=model,
-            verbosity=0,
+            verbosity=verbosity,
             val_metric=val_metric,
             x_transformation=x_transformation,
             y_transformation=y_transformation,
@@ -1242,15 +1243,7 @@ class OptimizePipeline(object):
         df = df.reset_index()
         df.columns = ['models', 'baseline', 'optimized']
 
-        _labels = df['models'].tolist()
-        labels = []
-
-        for label in _labels:
-            if label.endswith('Regressor'):
-                label = label.replace('Regressor', '')
-            elif label.endswith('Classifier'):
-                label = label.replace('Classifier', '')
-            labels.append(label)
+        labels = _shred_suffix(df['models'].tolist())
 
         df.to_csv(os.path.join(self.path, f"dumbell_{metric_name}_data.csv"))
 
@@ -1595,7 +1588,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             self,
             data,
             metric_name: str = None,
-            model_name: str = None
+            model_name: str = None,
+            verbosity = 1
     )->Model:
         """Build and Evaluate the best model with respect to metric *from config*.
 
@@ -1624,7 +1618,11 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             pipeline = self.get_best_pipeline_by_metric(metric_name=metric_name)
 
         cpath = os.path.join(pipeline['path'], "config.json")
+        if verbosity:
+            print(f"building using config file from {cpath}")
         model = Model.from_config_file(cpath)
+        model.config['verbosity'] = verbosity
+        model.verbosity = verbosity
 
         wpath = os.path.join(pipeline['path'], "weights",
                              list(pipeline['model'].keys())[0])
@@ -1670,7 +1668,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             self,
             data,
             metric_name: str = None,
-            model_name: str = None
+            model_name: str = None,
+            verbosity:int = 1
     )->Model:
         """
         Builds, Trains and Evaluates the **best model** with respect to metric from
@@ -1688,6 +1687,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             model_name : str, optional
                 If given, the best version of this model will be found and built.
                 The 'best' will be decided based upon `metric_name`
+            verbosity : int, optional (default=1)
+                determines amount of information to be printed.
 
         Returns
         -------
@@ -1715,7 +1716,9 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             data=data,
             x_transformation=pipeline['x_transformation'],
             y_transformation=pipeline['y_transformation'],
-            prefix=prefix)
+            prefix=prefix,
+            verbosity=verbosity,
+        )
 
         return model
 
@@ -1725,17 +1728,21 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             data,
             x_transformation,
             y_transformation,
-            prefix,
+            prefix:str,
             model_name=None,
+            verbosity:int = 1
     ) -> "Model":
         """builds and evaluates the model from scratch. If model_name is given,
         model's predictions are saved in 'taylor_plot_data_' dictionary
         """
-        model = self._build_model(model=model,
-                                  x_transformation=x_transformation,
-                                  y_transformation=y_transformation,
-                                  prefix=prefix,
-                                  val_metric=self.eval_metric)
+        model = self._build_model(
+            model=model,
+            x_transformation=x_transformation,
+            y_transformation=y_transformation,
+            prefix=prefix,
+            val_metric=self.eval_metric,
+            verbosity=verbosity
+        )
 
         model.fit_on_all_training_data(data=data)
 
@@ -1765,11 +1772,11 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         return
 
-    def _evaluate_model(
+    def evaluate_model(
             self,
-            model: Callable,
+            model: Model,
+            data,
             metric_name: str = None,
-            data = 'test',
             x = None,
             y = None
     )->float:
@@ -1779,12 +1786,11 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         ----------
             model :
                 an instance of ai4water's Model class
-            metric_name : str
+            data :
+                raw, unpreprocessed data form which x,y pairs are made
+            metric_name : str, optional
                 name of performance metric. If not given, evaluation metric
                 is used.
-            data :
-                either a dataframe or a string. If string, it must be one of
-                ``training``, ``validation`` and ``test``.
             x :
                 alternative to ``data``. Only required if ``data`` is not given.
             y :
@@ -1959,14 +1965,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             except ModelNotUsedError:
                 continue
 
-        labels = []
-
-        for label in models.keys():
-            if label.endswith('Regressor'):
-                label = label.replace('Regressor', '')
-            elif label.endswith('Classifier'):
-                label = label.replace('Classifier', '')
-            labels.append(label)
+        labels = _shred_suffix(list(models.keys()))
 
         plt.close('all')
         if plot_type == "circular":
@@ -2042,6 +2041,20 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                     self.metrics_best_.loc[self.parent_iter_-1, k] = pm
 
         return val_score
+
+
+def _shred_suffix(labels:list)->list:
+
+    new_labels = []
+
+    for label in labels:
+        if label.endswith('Regressor'):
+            label = label.replace('Regressor', '')
+        elif label.endswith('Classifier'):
+            label = label.replace('Classifier', '')
+        new_labels.append(label)
+
+    return new_labels
 
 
 class MetricNotMonitored(Exception):

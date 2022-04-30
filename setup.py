@@ -14,7 +14,7 @@ setup(
 
     name='autotab',
 
-    version="0.1",
+    version="0.11",
 
     description='optimization of ML pipeline using hierarchical optimization method',
     long_description=long_desc,

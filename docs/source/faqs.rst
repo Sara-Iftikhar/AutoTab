@@ -3,8 +3,9 @@ Frequently Asked Questions
 
 I don't want to optimize preprocessing step
 ===========================================
-If you dont want any preprocessing steps, keep `inputs_to_transform` and `outputs_to_transform` arguments
-equal to None or an empty list. In this way transformations will not be optimized for both inputs and targets.
+If you dont want any preprocessing steps, keep `inputs_to_transform`
+and `outputs_to_transform` arguments equal to None or an empty list.
+In this way transformations will not be optimized for both inputs and targets.
 As shown in below example,
 
 .. code-block:: python
@@ -89,7 +90,7 @@ Different optimization algorithms can be set by `parent_algorithm` and
 How to monitor more than one metrics
 ====================================
 The metrics you want to monitor can be given to `monitor` as a list.
-In this example, two metrics NSE and R2 are being monitored.
+In this example, two metrics NSE and $R^2$ are being monitored.
 
 .. code-block:: python
 
@@ -201,12 +202,19 @@ The results are stored in folder named results in the
 current working directory. The exact path of stored results can
 be checked by printing `model.path`.
 
+.. code-block:: python
+
+    >>> from autotab import OptimizePipeline
+    >>> pl = OptimizePipeline(...)
+    >>> print(pl.path)
+
 what if optimization stops in the middle
 ========================================
 If optimization stops in the middle due to an error,
 remaining results can be saved and analyzed by using these commands.
 
 .. code-block:: python
+    >>> from autotab import OptimizePipeline
     >>> pl.save_results()
     >>> pl.post_fit(data=data)
 
@@ -214,7 +222,12 @@ what is ``config.json`` file
 ============================
 `config.json` is a simply plain text file that stores information
 about pipeline such as parameters, pipeline configuration. The pipeline
-can be built again by using `from_config` function.
+can be built again by using `from_config_file` method as shown below.
+
+.. code-block:: python
+
+    >>> config_path = "path/to/config.json"
+    >>> new_pipeline = OptimizePipeline.from_config_file(config_path)
 
 How to include results from previous runs
 =========================================
@@ -231,5 +244,5 @@ from previous runs.
 What versions of underlying libraries do this package depends
 =============================================================
 Currently `AutoTab` is strongly coupled with a ML python framework
-`AI4Water`, whose version should be 1.1 or greater. Another dependency
+`AI4Water`, whose version should be 1.2 or greater. Another dependency
 is `h5py` which does not have any specific version requirement.
