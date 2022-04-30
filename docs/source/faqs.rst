@@ -10,7 +10,7 @@ As shown in below example,
 
 .. code-block:: python
 
-    >>> from _main import OptimizePipeline
+    >>> from autotab import OptimizePipeline
     >>> pl = OptimizePipeline(
     ...     inputs_to_transform=[],
     ...     outputs_to_transform=[],
@@ -24,7 +24,7 @@ the child iterations needs to be set to zero. As shown in below example,
 
 .. code-block:: python
 
-    >>> from _main import OptimizePipeline
+    >>> from autotab import OptimizePipeline
     >>> pl = OptimizePipeline(child_iterations=0)
     >>> results = pl.fit(data=data)
 
@@ -35,7 +35,7 @@ keep `models` argument equals to None or an empty list. As shown in below exampl
 
 .. code-block:: python
 
-    >>> from _main import OptimizePipeline
+    >>> from autotab import OptimizePipeline
     >>> pl = OptimizePipeline(models=[])
     >>> results = pl.fit(data=data)
 
@@ -48,7 +48,7 @@ be used in pipeline optimization.
 
 .. code-block:: python
 
-    >>> from _main import OptimizePipeline
+    >>> from autotab import OptimizePipeline
     >>> pl = OptimizePipeline(
     >>> models=["AdaBoostRegressor"])
     >>> results = pl.fit(data=data)
@@ -61,7 +61,7 @@ for the selected models.
 
 .. code-block:: python
 
-    >>> from _main import OptimizePipeline
+    >>> from autotab import OptimizePipeline
     >>> pl = OptimizePipeline(
     >>> models=[
     ...     "GradientBoostingRegressor",
@@ -80,7 +80,7 @@ Different optimization algorithms can be set by `parent_algorithm` and
 
 .. code-block:: python
 
-    >>> from _main import OptimizePipeline
+    >>> from autotab import OptimizePipeline
     >>> pl = OptimizePipeline(
     ...        parent_algorithm="bayes",
     ...        child_algorithm="bayes"
@@ -94,7 +94,7 @@ In this example, two metrics NSE and $R^2$ are being monitored.
 
 .. code-block:: python
 
-    >>> from _main import OptimizePipeline
+    >>> from autotab import OptimizePipeline
     >>> pl = OptimizePipeline(monitor=['r2', 'nse'])
     >>> results = pl.fit(data=data)
 
@@ -107,7 +107,7 @@ gives us best pipeline according to given model.
 
 .. code-block:: python
 
-    >>> from _main import OptimizePipeline
+    >>> from autotab import OptimizePipeline
     >>> pl = OptimizePipeline()
     >>> results = pl.fit(data=data)
     >>> pl.get_best_pipeline_by_metric(metric_name='nse')
@@ -120,7 +120,7 @@ respect to a specific (performance) metric.
 
 .. code-block:: python
 
-    >>> from _main import OptimizePipeline
+    >>> from autotab import OptimizePipeline
     >>> pl = OptimizePipeline()
     >>> results = pl.fit(data=data)
     >>> pl.get_best_pipeline_by_metric(metric_name='nse')
@@ -133,7 +133,7 @@ performance metric. The metric must be recorded i.e. must be given as
 
 .. code-block:: python
 
-    >>> from _main import OptimizePipeline
+    >>> from autotab import OptimizePipeline
     >>> pl = OptimizePipeline()
     >>> results = pl.fit(data=data)
     >>> pl.get_best_pipeline_by_model(model_name='RandomForest_regressor')
@@ -158,7 +158,7 @@ will be used for preprocessing steps.
 
 .. code-block:: python
 
-    >>> from _main import OptimizePipeline
+    >>> from autotab import OptimizePipeline
     >>> pl = OptimizePipeline(
     ...                    input_transformations=['minmax', 'log', 'zscore'],
     ...                    output_transformations=['quantile', 'box-cox', 'yeo-johnson']
@@ -173,7 +173,7 @@ In this way transformations will not be optimized for input data.
 
 .. code-block:: python
 
-    >>> from _main import OptimizePipeline
+    >>> from autotab import OptimizePipeline
     >>> pl = OptimizePipeline(inputs_to_transform=[])
     >>> results = pl.fit(data=data)
 
@@ -226,6 +226,7 @@ can be built again by using `from_config_file` method as shown below.
 
 .. code-block:: python
 
+    >>> from autotab import OptimizePipeline
     >>> config_path = "path/to/config.json"
     >>> new_pipeline = OptimizePipeline.from_config_file(config_path)
 
@@ -237,7 +238,7 @@ from previous runs.
 
 .. code-block:: python
 
-    >>> from _main import OptimizePipeline
+    >>> from autotab import OptimizePipeline
     >>> pl = OptimizePipeline(inputs_to_transform=[])
     >>> results = pl.fit(data=data, previous_results=fpath)
 

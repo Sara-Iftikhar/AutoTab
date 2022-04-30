@@ -7,7 +7,7 @@ import time
 import math
 import shutil
 import inspect
-from typing import Union, Callable
+from typing import Union
 from collections import OrderedDict, defaultdict
 
 import numpy as np
@@ -121,7 +121,7 @@ class OptimizePipeline(object):
         a numpy array containing val_metrics of all child hpo loops
 
     - optimizer
-        an instance of ai4water.hyperopt.HyperOpt for parent optimization
+        an instance of ai4water.hyperopt.HyperOpt [1]_ for parent optimization
 
     - models
         a list of models being considered for optimization
@@ -145,6 +145,8 @@ class OptimizePipeline(object):
     ----
     This optimization always solves a minimization problem even if the val_metric
     is $R^2$.
+
+    .. [1] https://ai4water.readthedocs.io/en/latest/hpo.html#hyperopt
     """
 
     def __init__(
@@ -217,13 +219,13 @@ class OptimizePipeline(object):
                 considered. For neural neworks, following 6 model types are
                 considered by default
 
-                    - MLP   multi layer perceptron
-                    - CNN   1D convolution neural network
-                    - LSTM  Long short term memory network
-                    - CNNLSTM   CNN-> LSTM
-                    - LSTMAutoEncoder  LSTM based autoencoder
-                    - TCN  Temporal convolution networks
-                    - TFT  Temporal fusion Transformer
+                    - MLP [1]_   multi layer perceptron
+                    - CNN [2]_  1D convolution neural network
+                    - LSTM [3]_ Long short term memory network
+                    - CNNLSTM [4]_  CNN-> LSTM
+                    - LSTMAutoEncoder [5]_ LSTM based autoencoder
+                    - TCN [6]_ Temporal convolution networks
+                    - TFT [7]_ Temporal fusion Transformer
 
                 However, in such cases, the ``category`` must be ``DL``.
 
@@ -266,6 +268,19 @@ class OptimizePipeline(object):
             **model_kwargs :
                 any additional key word arguments for ai4water's Model
 
+        .. [1]_ https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.MLP
+
+        .. [2]_ https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.CNN
+
+        .. [3]_ https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.LSTM
+
+        .. [4]_ https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.CNNLSTM
+
+        .. [5]_ https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.LSTMAutoEncoder
+
+        .. [6]_ https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.TCN
+
+        .. [7]_ https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.TFT
         """
         if isinstance(inputs_to_transform, dict):
             self._groups = inputs_to_transform
@@ -373,6 +388,12 @@ class OptimizePipeline(object):
         else:
             self._features_to_transform = self.inputs_to_transform + self.outputs_to_transform
 
+        self.batch_space = []
+        self.lr_space = []
+        if category == "DL":
+            self.batch_space = Categorical([8, 16, 32, 64], name="batch_size")
+            self.lr_space = Real(1e-5, 0.05, num_samples=10, name="lr")
+
     @property
     def outputs_to_transform(self):
         return self._out_to_transform
@@ -435,6 +456,12 @@ class OptimizePipeline(object):
         with open(cpath, 'w') as fp:
             json.dump(jsonize(config), fp, indent=4)
         return
+
+    def batch_size_space(self, space)->list:
+        space = []
+        if self.category == "DL":
+            space = Categorical
+        return space
 
     def update_model_space(self, space: dict) -> None:
         """updates or changes the search space of an already existing model
@@ -607,12 +634,25 @@ class OptimizePipeline(object):
 
         return sp
 
-    def add_batch_size_space(self):
-        return Categorical([4, 8, 16, 32, 64], name="batch_size")
+    def add_batch_size_space(self, space:list, low=None, high=None):
+        """changes the value of class attribute ``batch_space``.
+        It should be used after pipeline initialization and before calling ``fit`` method.
+        """
+        if isinstance(space, list):
+            self.batch_space = Categorical(space, name="lr")
+        else:
+            self.batch_space = Integer(low, high, name="lr", num_samples=10)
+        return
 
-    def add_lr_space(self):
-        space = Real(1e-5, 0.05, name="lr", num_samples=10)
-        return space
+    def add_lr_space(self, space:list, low=None, high=None):
+        """changes the value of class attribute ``lr_space``.
+        It should be used after pipeline initialization and before calling ``fit`` method.
+        """
+        if isinstance(space, list):
+            self.lr_space = Categorical(space, name="lr")
+        else:
+            Real(low, high, name="lr", num_samples=10)
+        return
 
     @property
     def max_child_iters(self) -> int:
@@ -813,7 +853,7 @@ class OptimizePipeline(object):
     ) -> dict:
         """optimizes hyperparameters of a model"""
 
-        def child_objective(**suggestions):
+        def child_objective(lr=0.001, batch_size=32, **suggestions):
             """objective function for optimization of model parameters"""
 
             self.child_iter_ += 1
@@ -832,6 +872,8 @@ class OptimizePipeline(object):
                 x_transformation=x_transformations,
                 y_transformation=y_transformations,
                 prefix=f"{self.parent_prefix_}{SEP}{self.CHILD_PREFIX}",
+                lr=lr,
+                batch_size=batch_size
             )
 
             val_score = self._fit_and_eval(_model,
@@ -845,7 +887,8 @@ class OptimizePipeline(object):
             return val_score
 
         # make space
-        child_space = self.model_space[model]['param_space']
+        child_space = self.model_space[model]['param_space'] + self.batch_space + self.lr_space
+
         self.child_iter_ = 0  # before starting child hpo, reset iteration counter
 
         optimizer = HyperOpt(
@@ -905,11 +948,15 @@ class OptimizePipeline(object):
             x_transformation,
             y_transformation,
             prefix: Union[str, None],
-            verbosity:int = 0
+            verbosity:int = 0,
+            batch_size=32,
+            lr=0.001,
     ) -> Model:
         """
         build the ai4water Model. When overwriting this method, the user
         must return an instance of ai4water's Model_ class.
+        batch_size : only used when category is "DL".
+        dl : only used when category is D:
 
         .. Model:
             https://ai4water.readthedocs.io/en/master/model.html#ai4water._main.BaseModel
@@ -922,6 +969,8 @@ class OptimizePipeline(object):
             y_transformation=y_transformation,
             # seed=self.seed,
             prefix=prefix,
+            batch_size=batch_size,
+            lr=lr,
             **self.model_kwargs
         )
         return model
@@ -1113,7 +1162,11 @@ class OptimizePipeline(object):
 
         return sorted_container[-1]
 
-    def baseline_results(self, data) -> tuple:
+    def baseline_results(
+            self,
+            data,
+            fit_on_all_train_data:bool = True
+    ) -> tuple:
         """
         Returns default performance of all models.
 
@@ -1125,7 +1178,15 @@ class OptimizePipeline(object):
         Parameters
         ----------
             data :
-                The data to use,
+                The data to use
+            fit_on_all_train_data : bool, optional (default=True)
+                If true, the model is trained on (training+validation) data.
+                This is based on supposition that the data is splitted into
+                training, validation and test sets. The optimization of
+                pipeline was performed on validation data. But now, we
+                are training the model on all available training data
+                which is (training + validation) data. If False, then
+                model is trained only on training data.
 
         Returns
         -------
@@ -1153,7 +1214,10 @@ class OptimizePipeline(object):
                     y_transformation=None
                 )
 
-                model.fit_on_all_training_data(data=data)
+                if fit_on_all_train_data:
+                    model.fit_on_all_training_data(data=data)
+                else:
+                    model.fit(data=data)
 
                 t, p = model.predict(return_true=True)
                 errors = self.Metrics(t, p, multiclass=model.is_multiclass)
@@ -1460,6 +1524,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         import matplotlib
         import sklearn
         import easy_mpl
+        from . import __version__
         versions = dict()
         versions['ai4water'] = ai4water.__version__
         versions['SeqMetrics'] = SeqMetrics.__version__
@@ -1469,6 +1534,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         versions['matplotlib'] = matplotlib.__version__
         versions['sklearn'] = sklearn.__version__
         versions['python'] = sys.version
+        versions['autotab'] = __version__
 
         try:
             import xgboost
@@ -1487,6 +1553,12 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             versions['lightgbm'] = lightgbm.__version__
         except (ModuleNotFoundError, ImportError):
             versions['lightgbm'] = None
+
+        try:
+            import tensorflow
+            versions['tensorflow'] = tensorflow.__version__
+        except (ModuleNotFoundError, ImportError):
+            versions['tensorflow'] = None
 
         return versions
 
@@ -1604,6 +1676,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             model_name : str, optional
                 If given, the best version of this model will be fetched and built.
                 The 'best' will be decided based upon `metric_name`
+            verbosity : int, optinoal (default=1)
+                determines the amount of print information
 
         Returns
         -------
@@ -1636,6 +1710,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             self,
             iter_num: int,
             data,
+            fit_on_all_train_data: bool = True,
     )->Model:
         """
         Builds, trains and evalutes the model from a specific iteration.
@@ -1647,7 +1722,14 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                 iteration number from which to choose the model
             data :
                 the data to use
-
+            fit_on_all_train_data : bool, optional (default=True)
+                If true, the model is trained on (training+validation) data.
+                This is based on supposition that the data is splitted into
+                training, validation and test sets. The optimization of
+                pipeline was performed on validation data. But now, we
+                are training the model on all available training data
+                which is (training + validation) data. If False, then
+                model is trained only on training data.
         Returns
         -------
             an instance of trained ai4water Model
@@ -1660,7 +1742,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             data=data,
             x_transformation=pipeline['x_transformation'],
             y_transformation=pipeline['y_transformation'],
-            prefix=prefix
+            prefix=prefix,
+            fit_on_all_train_data=fit_on_all_train_data,
         )
         return model
 
@@ -1669,6 +1752,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             data,
             metric_name: str = None,
             model_name: str = None,
+            fit_on_all_train_data: bool = True,
             verbosity:int = 1
     )->Model:
         """
@@ -1687,6 +1771,14 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             model_name : str, optional
                 If given, the best version of this model will be found and built.
                 The 'best' will be decided based upon `metric_name`
+            fit_on_all_train_data : bool, optional (default=True)
+                If true, the model is trained on (training+validation) data.
+                This is based on supposition that the data is splitted into
+                training, validation and test sets. The optimization of
+                pipeline was performed on validation data. But now, we
+                are training the model on all available training data
+                which is (training + validation) data. If False, then
+                model is trained only on training data.
             verbosity : int, optional (default=1)
                 determines amount of information to be printed.
 
@@ -1717,6 +1809,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             x_transformation=pipeline['x_transformation'],
             y_transformation=pipeline['y_transformation'],
             prefix=prefix,
+            fit_on_all_train_data=fit_on_all_train_data,
             verbosity=verbosity,
         )
 
@@ -1730,7 +1823,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             y_transformation,
             prefix:str,
             model_name=None,
-            verbosity:int = 1
+            verbosity:int = 1,
+            fit_on_all_train_data:bool = True
     ) -> "Model":
         """builds and evaluates the model from scratch. If model_name is given,
         model's predictions are saved in 'taylor_plot_data_' dictionary
@@ -1744,7 +1838,10 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             verbosity=verbosity
         )
 
-        model.fit_on_all_training_data(data=data)
+        if fit_on_all_train_data:
+            model.fit_on_all_training_data(data=data)
+        else:
+            model.fit(data=data)
 
         model.dh_.to_disk(model.path)
 
@@ -1818,7 +1915,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
     def bfe_all_best_models(
             self,
             data,
-            metric_name: str = None
+            metric_name: str = None,
+            fit_on_all_train_data: bool = True,
     ) -> None:
         """
         builds, trains and evaluates best versions of all the models.
@@ -1831,7 +1929,14 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             metric_name : str
                 the name of metric to determine best version of a model. If not given,
                 parent_val_metric will be used.
-
+            fit_on_all_train_data : bool, optional (default=True)
+                If true, the model is trained on (training+validation) data.
+                This is based on supposition that the data is splitted into
+                training, validation and test sets. The optimization of
+                pipeline was performed on validation data. But now, we
+                are training the model on all available training data
+                which is (training + validation) data. If False, then
+                model is trained only on training data.
         Returns
         -------
         None
@@ -1864,7 +1969,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                 x_transformation=pipeline['x_transformation'],
                 y_transformation=pipeline['y_transformation'],
                 prefix=prefix,
-                model_name=model
+                model_name=model,
+                fit_on_all_train_data=fit_on_all_train_data,
             )
 
         return

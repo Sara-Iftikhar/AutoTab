@@ -12,6 +12,7 @@ data = busan_beach()
 
 pl = OptimizePipeline(
     inputs_to_transform=data.columns.tolist()[0:-1],
+    outputs_to_transform=data.columns.tolist()[-1:],
     parent_iterations=30,
     child_iterations=0,  # don't optimize hyperparamters only for demonstration
     parent_algorithm='bayes',
