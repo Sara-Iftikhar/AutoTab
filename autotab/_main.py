@@ -268,6 +268,9 @@ class OptimizePipeline(object):
             **model_kwargs :
                 any additional key word arguments for ai4water's Model
 
+        References
+        ----------
+
         .. [1]_ https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.MLP
 
         .. [2]_ https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.CNN
@@ -1338,6 +1341,7 @@ class OptimizePipeline(object):
             figsize: tuple = None,
             show: bool = True,
             save: bool = True,
+            verbosity:int = 0,
             **kwargs
     ) -> plt.Figure:
         """
@@ -1357,6 +1361,8 @@ class OptimizePipeline(object):
                 whether to show the plot or not
             save : bool, optional
                 whether to save the plot or not
+            verbosity : int, optional (default=0)
+                determines the amount of print information
             **kwargs :
                 any additional keyword arguments for taylor_plot function of `easy_mpl`_.
 
@@ -1372,7 +1378,7 @@ class OptimizePipeline(object):
         """
 
         if self.taylor_plot_data_['observations']['test'] is None:
-            self.bfe_all_best_models(data=data)
+            self.bfe_all_best_models(data=data, verbosity=verbosity)
 
         ax = taylor_plot(
             show=False,
@@ -1803,8 +1809,18 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         suffix = f"{SEP}{metric_name}_{met_val}_{model_name}"
         prefix = f"{self.path}{SEP}results_from_scratch{suffix}"
 
+        model_config = pipeline['model']
+
+        if self.category == "DL":
+            model_name = list(model_config.keys())[0]
+            kwargs = list(model_config.values())[0]
+
+            model_config = DL_MODELS[model_name](mode=self.mode,
+                                                 output_features=self.num_outputs,
+                                                 **kwargs)
+
         model = self._build_and_eval_from_scratch(
-            model=pipeline['model'],
+            model=model_config,
             data=data,
             x_transformation=pipeline['x_transformation'],
             y_transformation=pipeline['y_transformation'],
@@ -1860,8 +1876,13 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         dictionary
         """
         model.predict_on_training_data(data=data, metrics="all")
-        model.predict_on_validation_data(data=data, metrics="all")
-        t, p = model.predict_on_test_data(data=data, metrics="all", return_true=True)
+
+        # if data is split into 2 sets, we don't have test set.
+        if model.config['train_fraction']<1.0:
+            model.predict_on_validation_data(data=data, metrics="all")
+            t, p = model.predict_on_test_data(data=data, metrics="all", return_true=True)
+        else:
+            t, p = model.predict_on_validation_data(data=data, metrics="all", return_true=True)
 
         if model_name:
             self.taylor_plot_data_['observations']['test'] = t
@@ -1917,6 +1938,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             data,
             metric_name: str = None,
             fit_on_all_train_data: bool = True,
+            verbosity:int = 0,
     ) -> None:
         """
         builds, trains and evaluates best versions of all the models.
@@ -1937,6 +1959,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                 are training the model on all available training data
                 which is (training + validation) data. If False, then
                 model is trained only on training data.
+            verbosity : int, optional (default=0)
+                determines the amount of print information
         Returns
         -------
         None
@@ -1971,6 +1995,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                 prefix=prefix,
                 model_name=model,
                 fit_on_all_train_data=fit_on_all_train_data,
+                verbosity=verbosity,
             )
 
         return

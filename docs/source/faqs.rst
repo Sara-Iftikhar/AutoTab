@@ -1,6 +1,25 @@
 Frequently Asked Questions
 **************************
 
+What is difference between parent and child iterations/algorithm?
+===========================================================
+AutoTab operates based upon parent and child optimization iterations
+The parent iteration is responsible for preprocessing step optimization
+and model optimization. During each parent iteration, when the preprocessing
+and model is selected/suggested by the algorithm for this iteration, the
+child optimization loops starts. The job of child optimization loop is
+to optimize hyperparameters of the selected/suggested model. The user can
+specify any algorithm from following algorithms for parent and child optimization
+algorithms.
+
+    - bayes
+    - random
+    - grid
+    - bayes_rf
+    - tpe
+    - atpe
+    - cmaes
+
 I don't want to optimize preprocessing step
 ===========================================
 If you dont want any preprocessing steps, keep `inputs_to_transform`
