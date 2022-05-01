@@ -36,6 +36,8 @@ data = busan_beach()
 input_features = data.columns.tolist()[0:-1]
 output_features = data.columns.tolist()[-1:]
 
+transformations = ['minmax', 'zscore', 'log', 'log10', 'sqrt', 'robust', 'quantile', 'none', 'scale']
+
 pl = OptimizePipeline(
     inputs_to_transform=data.columns.tolist()[0:-1],
     parent_iterations=400,
@@ -45,8 +47,8 @@ pl = OptimizePipeline(
     cv_parent_hpo=True,
     eval_metric='mse',
     monitor=['r2', 'nse'],
-    input_transformations = ['minmax', 'zscore', 'log', 'log10', 'sqrt', 'robust', 'quantile'],
-    output_transformations = ['minmax', 'zscore', 'log', 'log10', 'sqrt', 'robust', 'quantile'],
+    input_transformations = transformations,
+    output_transformations = transformations,
     models=[ "LinearRegression",
             "LassoLars",
             "Lasso",
@@ -67,10 +69,22 @@ pl = OptimizePipeline(
 )
 ```
 
+get version information
+```python
+pl._version_info()
+```
+
+perform optimization 
 ```python
 results = pl.fit(data=data, process_results=False)
 ```
 
+print optimization report
+```python
+print(pl.report())
+```
+
+show convergence plot
 ```python
 pl.optimizer._plot_convergence(save=False)
 ```
@@ -127,6 +141,12 @@ pl.compare_models(plot_type="bar_chart")
 pl.compare_models("r2", plot_type="bar_chart")
 ```
 
+get best pipeline with respect to evaluation metric
+```python
+pl.get_best_pipeline_by_metric('r2')
+```
+
+build fit and evaluate the best pipeline
 ```python
 model = pl.bfe_best_model_from_scratch(data=data)
 ```
@@ -143,6 +163,10 @@ pl.evaluate_model(model, data, 'nse')
 pl.evaluate_model(model, data, 'r2')
 ```
 
+get best pipeline with respect to $R^2$
+```python
+pl.get_best_pipeline_by_metric('r2')
+```
 
 ```python
 model = pl.bfe_best_model_from_scratch(data, 'r2')

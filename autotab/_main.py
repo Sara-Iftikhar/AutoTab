@@ -100,7 +100,21 @@ def fill_val(metric_type:str, best_so_far):
     return -9999999999
 
 
-class OptimizePipeline(object):
+class PipelineMixin(object):
+
+    def __init__(
+            self,
+            mode,
+            category,
+    ):
+        assert mode in ("regression", "classification"), f"{mode} not allowed as mode"
+        self.mode = mode
+
+        assert category in ("DL", "ML")
+        self.category = category
+
+
+class OptimizePipeline(PipelineMixin):
     """
     optimizes model/estimator, its hyperparameters and preprocessing
     operation to be performed on input and output features. It consists of two
@@ -229,7 +243,7 @@ class OptimizePipeline(object):
 
                 However, in such cases, the ``category`` must be ``DL``.
 
-            parent_iterations : int, optional
+            parent_iterations : int, optional (default=100)
                 Number of iterations for parent optimization loop
             child_iterations : int, optional
                 Number of iterations for child optimization loop. It set to 0,
@@ -270,20 +284,19 @@ class OptimizePipeline(object):
 
         References
         ----------
+        .. [1] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.MLP
 
-        .. [1]_ https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.MLP
+        .. [2] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.CNN
 
-        .. [2]_ https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.CNN
+        .. [3] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.LSTM
 
-        .. [3]_ https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.LSTM
+        .. [4] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.CNNLSTM
 
-        .. [4]_ https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.CNNLSTM
+        .. [5] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.LSTMAutoEncoder
 
-        .. [5]_ https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.LSTMAutoEncoder
+        .. [6] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.TCN
 
-        .. [6]_ https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.TCN
-
-        .. [7]_ https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.TFT
+        .. [7] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.TFT
         """
         if isinstance(inputs_to_transform, dict):
             self._groups = inputs_to_transform
@@ -296,12 +309,9 @@ class OptimizePipeline(object):
 
         self.output_transformations = output_transformations or DEFAULT_TRANSFORMATIONS
 
-        assert mode in ("regression", "classification"), f"{mode} not allowed as mode"
-        self.mode = mode
-        self.num_classes = num_classes
+        super(OptimizePipeline, self).__init__(mode, category)
 
-        assert category in ("DL", "ML")
-        self.category = category
+        self.num_classes = num_classes
 
         self.models = models
         if models is None:

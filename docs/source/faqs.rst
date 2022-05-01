@@ -2,7 +2,7 @@ Frequently Asked Questions
 **************************
 
 What is difference between parent and child iterations/algorithm?
-===========================================================
+=================================================================
 AutoTab operates based upon parent and child optimization iterations
 The parent iteration is responsible for preprocessing step optimization
 and model optimization. During each parent iteration, when the preprocessing
@@ -209,6 +209,7 @@ the remaining models will remain same as defined by the user at the start.
 
 .. code-block:: python
 
+    >>> from autotab import OptimizePipeline
     >>> pl = OptimizePipeline(...)
     >>> pl.change_child_iteration({"XGBRegressor": 10})
     #If we want to change iterations for more than one models
@@ -233,7 +234,11 @@ If optimization stops in the middle due to an error,
 remaining results can be saved and analyzed by using these commands.
 
 .. code-block:: python
+
     >>> from autotab import OptimizePipeline
+    >>> pl = OptimizePipeline(...)
+    >>> pl.fit(data=data)
+    .. # if above command stops in the middle due to an error
     >>> pl.save_results()
     >>> pl.post_fit(data=data)
 
