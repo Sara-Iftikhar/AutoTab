@@ -11,6 +11,8 @@ from autotab import OptimizePipeline
 data = busan_beach()
 data.shape
 
+##############################################
+
 pl = OptimizePipeline(
     inputs_to_transform=data.columns.tolist()[0:-1],
     outputs_to_transform=data.columns.tolist()[-1:],
@@ -28,7 +30,7 @@ pl = OptimizePipeline(
     output_features=data.columns.tolist()[-1:],
     split_random=True,
     category="DL",
-    epochs=300,
+    epochs=100,
     train_fraction=1.0,
     val_fraction=0.3,
 

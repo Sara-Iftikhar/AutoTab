@@ -812,7 +812,11 @@ class OptimizePipeline(PipelineMixin):
         else:
             opt_paras = {}
 
+        kwargs = {}
         if self.category == "DL":
+            for arg in ['lr', 'batch_size']:
+                if arg in opt_paras:
+                    kwargs[arg] = opt_paras.pop(arg)
             model_config = DL_MODELS[model](mode=self.mode,
                                             output_features=self.num_outputs,
                                             **opt_paras)
@@ -826,6 +830,7 @@ class OptimizePipeline(PipelineMixin):
             x_transformation=x_trnas,
             y_transformation=y_trans,
             prefix=f"{self.parent_prefix_}{SEP}{self.CHILD_PREFIX}",
+            **kwargs
         )
 
         self.parent_suggestions_[self.parent_iter_] = {
