@@ -404,8 +404,8 @@ class OptimizePipeline(PipelineMixin):
         self.batch_space = []
         self.lr_space = []
         if category == "DL":
-            self.batch_space = Categorical([8, 16, 32, 64], name="batch_size")
-            self.lr_space = Real(1e-5, 0.05, num_samples=10, name="lr")
+            self.batch_space = [Categorical([8, 16, 32, 64], name="batch_size")]
+            self.lr_space = [Real(1e-5, 0.05, num_samples=10, name="lr")]
 
     @property
     def outputs_to_transform(self):
@@ -647,24 +647,24 @@ class OptimizePipeline(PipelineMixin):
 
         return sp
 
-    def add_batch_size_space(self, space:list, low=None, high=None):
+    def change_batch_size_space(self, space:list, low=None, high=None):
         """changes the value of class attribute ``batch_space``.
         It should be used after pipeline initialization and before calling ``fit`` method.
         """
         if isinstance(space, list):
-            self.batch_space = Categorical(space, name="lr")
+            self.batch_space = [Categorical(space, name="lr")]
         else:
-            self.batch_space = Integer(low, high, name="lr", num_samples=10)
+            self.batch_space = [Integer(low, high, name="lr", num_samples=10)]
         return
 
-    def add_lr_space(self, space:list, low=None, high=None):
+    def change_lr_space(self, space:list, low=None, high=None):
         """changes the value of class attribute ``lr_space``.
         It should be used after pipeline initialization and before calling ``fit`` method.
         """
         if isinstance(space, list):
-            self.lr_space = Categorical(space, name="lr")
+            self.lr_space = [Categorical(space, name="lr")]
         else:
-            Real(low, high, name="lr", num_samples=10)
+            self.lr_space = [Real(low, high, name="lr", num_samples=10)]
         return
 
     @property

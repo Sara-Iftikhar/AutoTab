@@ -14,7 +14,7 @@ data.shape
 pl = OptimizePipeline(
     inputs_to_transform=data.columns.tolist()[0:-1],
     outputs_to_transform=data.columns.tolist()[-1:],
-    parent_iterations=50,
+    parent_iterations=30,
     child_iterations=0,
     parent_algorithm='bayes',
     child_algorithm="random",

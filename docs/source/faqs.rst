@@ -20,6 +20,10 @@ algorithms.
     - atpe
     - cmaes
 
+Is the pipeline optimized for test data or validation data?
+===========================================================
+for validation data
+
 I don't want to optimize preprocessing step
 ===========================================
 If you dont want any preprocessing steps, keep `inputs_to_transform`
@@ -271,3 +275,9 @@ What versions of underlying libraries do this package depends
 Currently `AutoTab` is strongly coupled with a ML python framework
 `AI4Water`, whose version should be 1.2 or greater. Another dependency
 is `h5py` which does not have any specific version requirement.
+
+
+how to change search space for batch_size and learning rate
+===========================================================
+by making use of ``change_batch_size_space`` and ``change_lr_space``
+methods after class initialization
