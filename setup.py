@@ -46,11 +46,11 @@ setup(
     packages=['autotab'],
 
     install_requires=[
-        'ai4water[ml_hpo]>=1.1',
+        'ai4water[ml_hpo]>=1.2',
         'h5py',
     ],
     extras_require={
-        'all': ["ai4water[ml_hpo]>=1.1",
+        'all': ["ai4water[ml_hpo]>=1.2",
                 "tensorflow==2.7",
                 "h5py"],
 

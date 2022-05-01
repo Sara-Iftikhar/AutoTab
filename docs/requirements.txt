@@ -1,4 +1,4 @@
-ai4water[ml_hpo]>=1.01
+ai4water[ml_hpo]>=1.02
 sphinx
 sphinx-prompt
 sphinx_copybutton
@@ -8,3 +8,4 @@ sphinx_issues
 sphinx-gallery
 h5py
 optuna
+tensorflow==2.7
