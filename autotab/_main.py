@@ -5,9 +5,10 @@ import json
 import sys
 import time
 import math
+import types
 import shutil
 import inspect
-from typing import Union
+from typing import Union, Callable
 from collections import OrderedDict, defaultdict
 
 import numpy as np
@@ -470,12 +471,6 @@ class OptimizePipeline(PipelineMixin):
             json.dump(jsonize(config), fp, indent=4)
         return
 
-    def batch_size_space(self, space)->list:
-        space = []
-        if self.category == "DL":
-            space = Categorical
-        return space
-
     def update_model_space(self, space: dict) -> None:
         """updates or changes the search space of an already existing model
 
@@ -501,6 +496,35 @@ class OptimizePipeline(PipelineMixin):
             space = to_skopt_space(space)
             self.model_space[model] = {'param_space': [s for s in space]}
         return
+
+    def add_dl_model(
+            self,
+            model: Callable,
+            space:Union[list, Real, Categorical, Integer]
+    )->None:
+        """adds a deep learning model to be considered.
+
+        Parameters
+        ----------
+            model : callable
+                the model to be added
+            space : list
+                the search space of the model
+        """
+        if isinstance(model, types.FunctionType):
+            model_config = model()
+            assert isinstance(model_config, dict), f"model does not require valid model config {model_config}"
+            assert len(model_config) == 1, f"model config has length of 1 {len(model_config)}"
+            assert 'layers' in model_config, f"model config must have 'layers' key {model_config.keys()}"
+
+            model_name = model.__name__
+            space = to_skopt_space(space)
+            self.models.append(model_name)
+            DL_MODELS[model_name] = model
+            self.model_space[model_name] = {'param_space': space}
+            self._child_iters[model_name] = self.child_iterations
+        else:
+            raise NotImplementedError
 
     def add_model(
             self,
@@ -685,6 +709,9 @@ class OptimizePipeline(PipelineMixin):
         metrics_best = np.full((self.parent_iterations, len(self.metrics_)), np.nan)
         self.metrics_best_ = pd.DataFrame(metrics_best, columns=list(self.metrics_.keys()))
 
+        self.parent_seeds_ = np.random.randint(0, 10000, self.parent_iterations)
+        self.child_seeds_ = np.random.randint(0, 10000, self.max_child_iters)
+
         # each row indicates parent iteration, column indicates child iteration
         self.child_val_scores_ = np.full((self.parent_iterations,
                                           self.max_child_iters),
@@ -833,6 +860,10 @@ class OptimizePipeline(PipelineMixin):
             **kwargs
         )
 
+        # set the global seed. This is only for internal use so that results become more reproducible
+        # when the model is built again
+        _model.seed_everything(self.parent_seeds_[self.parent_iter_-1])
+
         self.parent_suggestions_[self.parent_iter_] = {
             # 'seed': self.seed,
             'x_transformation': x_trnas,
@@ -893,6 +924,8 @@ class OptimizePipeline(PipelineMixin):
                 lr=lr,
                 batch_size=batch_size
             )
+
+            _model.seed_everything(self.child_seeds_[self.child_iter_-1])
 
             val_score = self._fit_and_eval(_model,
                                            data=self.data_,
@@ -1108,13 +1141,18 @@ class OptimizePipeline(PipelineMixin):
                 - ``model`` name of model
                 - ``x_transfromations``  transformations for the input data
                 - ``y_transformations`` transformations for the target data
+                - ``iter_num`` iteration number on which this pipeline was achieved
         """
 
         metric_name = metric_name or self.eval_metric
 
-        idx = self.get_best_metric_iteration(metric_name)
+        iter_num = self.get_best_metric_iteration(metric_name)
 
-        return self.parent_suggestions_[idx]
+        pipeline = self.parent_suggestions_[iter_num]
+
+        pipeline['iter_num'] = iter_num
+
+        return pipeline
 
     def get_best_pipeline_by_model(
             self,
@@ -1144,10 +1182,11 @@ class OptimizePipeline(PipelineMixin):
                 metric
             - second value is a dictionary of pipeline with four keys
 
-                x_transformation
-                y_transformation
-                model
-                path
+                ``x_transformation``
+                ``y_transformation``
+                ``model``
+                ``path``
+                ``iter_num``
         """
 
         metric_name = metric_name or self.eval_metric
@@ -1438,6 +1477,8 @@ class OptimizePipeline(PipelineMixin):
         The performance of each model during child optimization iteration is saved as a csv
         file with the name ``child_val_scores.csv``.
 
+        The global seeds for parent and child iterations are also saved in csv files with
+        name ``parent_seeds.csv`` and ``child_seeds.csv``.
         All of these results are saved in pl.path folder.
 
         Returns
@@ -1466,6 +1507,12 @@ class OptimizePipeline(PipelineMixin):
         pd.DataFrame(
             self.child_val_scores_,
             columns=[f'child_iter_{i}' for i in range(self.max_child_iters)]).to_csv(fpath)
+
+        fpath = os.path.join(self.path, 'child_seeds.csv')
+        pd.DataFrame(self.child_seeds_, columns=['child_seeds']).to_csv(fpath, index=False)
+
+        fpath = os.path.join(self.path, 'parent_seeds.csv')
+        pd.DataFrame(self.parent_seeds_, columns=['parent_seeds']).to_csv(fpath, index=False)
         return
 
     def metric_report(self, metric_name: str) -> str:
@@ -1765,6 +1812,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             y_transformation=pipeline['y_transformation'],
             prefix=prefix,
             fit_on_all_train_data=fit_on_all_train_data,
+            seed=self.parent_seeds_[int(pipeline['iter_num'])-1]
         )
         return model
 
@@ -1842,6 +1890,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             prefix=prefix,
             fit_on_all_train_data=fit_on_all_train_data,
             verbosity=verbosity,
+            seed=self.parent_seeds_[int(pipeline['iter_num'])-1]
         )
 
         return model
@@ -1855,7 +1904,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             prefix:str,
             model_name=None,
             verbosity:int = 1,
-            fit_on_all_train_data:bool = True
+            fit_on_all_train_data:bool = True,
+            seed:int = None,
     ) -> "Model":
         """builds and evaluates the model from scratch. If model_name is given,
         model's predictions are saved in 'taylor_plot_data_' dictionary
@@ -1868,6 +1918,9 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             val_metric=self.eval_metric,
             verbosity=verbosity
         )
+
+        if seed:
+            model.seed_everything(seed)
 
         if fit_on_all_train_data:
             model.fit_on_all_training_data(data=data)
@@ -2011,6 +2064,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                 model_name=model,
                 fit_on_all_train_data=fit_on_all_train_data,
                 verbosity=verbosity,
+                seed=self.parent_seeds_[int(pipeline['iter_num'])-1]
             )
 
         return
