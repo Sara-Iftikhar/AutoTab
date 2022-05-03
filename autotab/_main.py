@@ -862,7 +862,7 @@ class OptimizePipeline(PipelineMixin):
 
         # set the global seed. This is only for internal use so that results become more reproducible
         # when the model is built again
-        _model.seed_everything(self.parent_seeds_[self.parent_iter_-1])
+        _model.seed_everything(int(self.parent_seeds_[self.parent_iter_-1]))
 
         self.parent_suggestions_[self.parent_iter_] = {
             # 'seed': self.seed,
@@ -925,7 +925,7 @@ class OptimizePipeline(PipelineMixin):
                 batch_size=batch_size
             )
 
-            _model.seed_everything(self.child_seeds_[self.child_iter_-1])
+            _model.seed_everything(int(self.child_seeds_[self.child_iter_-1]))
 
             val_score = self._fit_and_eval(_model,
                                            data=self.data_,
@@ -1201,6 +1201,7 @@ class OptimizePipeline(PipelineMixin):
         for iter_num, iter_suggestions in self.parent_suggestions_.items():
             # iter_suggestion is a dictionary and it contains four keys
             model = iter_suggestions['model']
+
             # model is dictionary, whose key is the model_name and values
             # are model configuration
 
@@ -1209,6 +1210,7 @@ class OptimizePipeline(PipelineMixin):
                 metric_val = self.metrics_[metric_name][int(iter_num)]
                 metric_val = round(metric_val, 4)
 
+                iter_suggestions['iter_num'] = iter_num
                 model_container[metric_val] = iter_suggestions
 
         if len(model_container) == 0:
@@ -1920,7 +1922,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         )
 
         if seed:
-            model.seed_everything(seed)
+            model.seed_everything(int(seed))
 
         if fit_on_all_train_data:
             model.fit_on_all_training_data(data=data)
