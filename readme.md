@@ -1,5 +1,6 @@
 [![Documentation Status](https://readthedocs.org/projects/autotab/badge/?version=latest)](https://autotab.readthedocs.io/en/latest/?badge=latest)
 [![PyPI version](https://badge.fury.io/py/autotab.svg)](https://badge.fury.io/py/autotab)
+[![DOI](https://zenodo.org/badge/433432707.svg)](https://zenodo.org/badge/latestdoi/433432707)
 
 # autotab
 
