@@ -29,6 +29,10 @@ from ai4water.experiments.utils import regression_space, classification_space, d
 assert ai4water.__version__ >= "1.02"
 
 
+# TODO's
+# custom metric
+# custom model which is installed/not installed
+
 # in order to unify the use of metrics
 Metrics = {
     'regression': lambda t, p, multiclass=False, **kwargs: RegressionMetrics(t, p, **kwargs),
@@ -122,10 +126,10 @@ class PipelineMixin(object):
             "zscore": {},
             "box-cox": {'treat_negatives': True, 'replace_zeros': True},
             "yeo-johnson": {},
-            "robust": "robust",
+            "robust": {},
             "log": {'treat_negatives': True, 'replace_zeros': True},
-            "log2": "log2",
-            "log10": "log10",
+            "log2": {'treat_negatives': True, 'replace_zeros': True},
+            "log10": {'treat_negatives': True, 'replace_zeros': True},
             "sqrt": {'treat_negatives': True}
         }
 
@@ -695,6 +699,7 @@ class OptimizePipeline(PipelineMixin):
         """changes the value of class attribute ``batch_space``.
         It should be used after pipeline initialization and before calling ``fit`` method.
         """
+        assert self.category == "DL"
         if isinstance(space, list):
             self.batch_space = [Categorical(space, name="lr")]
         else:
@@ -705,6 +710,7 @@ class OptimizePipeline(PipelineMixin):
         """changes the value of class attribute ``lr_space``.
         It should be used after pipeline initialization and before calling ``fit`` method.
         """
+        assert self.category == "DL"
         if isinstance(space, list):
             self.lr_space = [Categorical(space, name="lr")]
         else:

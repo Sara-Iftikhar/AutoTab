@@ -275,7 +275,8 @@ from previous runs.
 .. code-block:: python
 
     >>> from autotab import OptimizePipeline
-    >>> pl = OptimizePipeline(inputs_to_transform=[])
+    >>> pl = OptimizePipeline(...)
+    >>> fpath = "path/to/previous/iterations.json"
     >>> results = pl.fit(data=data, previous_results=fpath)
 
 What versions of underlying libraries do this package depends
@@ -307,5 +308,20 @@ Instead of ``KFold``, we also choose ``LeaveOneOut``, or ``ShuffleSplit`` or ``T
 
 how to change search space for batch_size and learning rate
 ===========================================================
-by making use of ``change_batch_size_space`` and ``change_lr_space``
-methods after class initialization
+The learning_rate and batch_size search space is only active for
+deep learning models i.e. when the ``category`` is "DL". The default
+search space for learning rate is ``Real(low=1e-5, high=0.05, num_samples=10, name="lr")``
+while for batch_size, the default search space is ``[8, 16, 32, 64]``.
+We can change the default search space by making use of ``change_batch_size_space``
+and ``change_lr_space`` methods after class initialization. For example we can
+achieve a different batch_size search space as below
+
+.. code-block:: python
+
+    >>> from autotab import OptimizePipeline
+    >>> pl = OptimizePipeline(
+    ...         ...
+    ...         category="DL
+    ...           )
+    ... pl.change_batch_size_space([32, 64, 128, 256, 512])
+
