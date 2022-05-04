@@ -156,8 +156,9 @@ class OptimizePipeline(PipelineMixin):
         an ordered dictionary of suggestions to the parent objective function
         during parent hpo loop
 
-    - child_val_metrics:
-        a numpy array containing val_metrics of all child hpo loops
+    - child_val_scores_:
+        a numpy array of shape (parent_iterations, child_iterations) containing
+        value of eval_metric at all child hpo loops
 
     - optimizer_
         an instance of ai4water.hyperopt.HyperOpt [1]_ for parent optimization
