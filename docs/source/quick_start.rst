@@ -192,5 +192,6 @@ For multi-class classification with neural networks, we must set
     >>>         num_classes = 4,
     >>>         eval_metric="accuracy",
     >>>         monitor="f1_score",
-    >>>         data=multi_cls_data,
     >>>     )
+    >>> pl.fit(data=multi_cls_data,)
+

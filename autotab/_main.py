@@ -114,6 +114,20 @@ class PipelineMixin(object):
         assert category in ("DL", "ML")
         self.category = category
 
+        self.transformations = {
+            "quantile": {'output_distribution': 'normal'},
+            "minmax": {},
+            "center": {},
+            "scale": {},
+            "zscore": {},
+            "box-cox": {'treat_negatives': True, 'replace_zeros': True},
+            "yeo-johnson": {},
+            "robust": "robust",
+            "log": {'treat_negatives': True, 'replace_zeros': True},
+            "log2": "log2",
+            "log10": "log10",
+            "sqrt": {'treat_negatives': True}
+        }
 
 class OptimizePipeline(PipelineMixin):
     """
@@ -993,22 +1007,15 @@ class OptimizePipeline(PipelineMixin):
             if feature in self._features_to_transform:
                 if method != "none":  # don't do anything with this feature
                     # get the relevant transformation for this feature
-                    t = {"method": method, "features": self._groups[feature]}
+                    t_config = {"method": method, "features": self._groups[feature]}
 
                     # some preprocessing is required for log based transformations
-                    if method.startswith("log"):
-                        t["treat_negatives"] = True
-                        t["replace_zeros"] = True
-                    elif method == "box-cox":
-                        t["treat_negatives"] = True
-                        t["replace_zeros"] = True
-                    elif method == "sqrt":
-                        t['treat_negatives'] = True
+                    t_config.update(self.transformations[method])
 
                     if feature in self.inputs_to_transform:
-                        x_transformations.append(t)
+                        x_transformations.append(t_config)
                     else:
-                        y_transformations.append(t)
+                        y_transformations.append(t_config)
 
         return x_transformations, y_transformations
 

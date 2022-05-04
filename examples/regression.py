@@ -77,7 +77,7 @@ pl.dumbbell_plot(data=data, save=False)
 
 ##############################################
 
-pl.dumbbell_plot(data, 'r2', save=False)
+pl.dumbbell_plot(data=data, metric_name='r2', save=False)
 ##############################################
 
 pl.taylor_plot(data=data, save=False)

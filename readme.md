@@ -86,23 +86,23 @@ print(pl.report())
 
 show convergence plot
 ```python
-pl.optimizer._plot_convergence(save=False)
+pl.optimizer_._plot_convergence(save=False)
 ```
 
 ```python
-pl.optimizer._plot_parallel_coords(figsize=(16, 8), save=False)
+pl.optimizer_._plot_parallel_coords(figsize=(16, 8), save=False)
 ```
 
 ```python
-_ = pl.optimizer._plot_distributions(save=False)
+_ = pl.optimizer_._plot_distributions(save=False)
 ```
 
 ```python
-pl.optimizer.plot_importance(save=False)
+pl.optimizer_.plot_importance(save=False)
 ```
 
 ```python
-pl.optimizer.plot_importance(save=False, plot_type="bar")
+pl.optimizer_.plot_importance(save=False, plot_type="bar")
 ```
 
 ```python
@@ -122,7 +122,7 @@ pl.dumbbell_plot(data=data)
 ```
 
 ```python
-pl.dumbbell_plot(data, 'r2')
+pl.dumbbell_plot(data=data, metric_name='r2')
 ```
 
 ```python
@@ -156,11 +156,11 @@ pl.evaluate_model(model, data=data)
 ```
 
 ```python
-pl.evaluate_model(model, data, 'nse')
+pl.evaluate_model(model, data=data, metric_name='nse')
 ```
 
 ```python
-pl.evaluate_model(model, data, 'r2')
+pl.evaluate_model(model, data=data, metric_name='r2')
 ```
 
 get best pipeline with respect to $R^2$
@@ -169,11 +169,11 @@ pl.get_best_pipeline_by_metric('r2')
 ```
 
 ```python
-model = pl.bfe_best_model_from_scratch(data, 'r2')
+model = pl.bfe_best_model_from_scratch(data=data, metric_name='r2')
 ```
 
 ```python
-pl.evaluate_model(model, data, 'r2')
+pl.evaluate_model(model, data=data, metric_name='r2')
 ```
 
 ```python
