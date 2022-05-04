@@ -35,5 +35,7 @@ OptimizePipeline
         config,
         report,
         save_results,
+        add_dl_model,
+
    :undoc-members:
    :show-inheritance:

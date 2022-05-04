@@ -17,8 +17,8 @@ pl = OptimizePipeline(
     child_iterations=0,  # don't optimize hyperparamters only for demonstration
     parent_algorithm='bayes',
     child_algorithm='random',
-    eval_metric='r2_score',
-    monitor=['r2', 'nse'],
+    eval_metric='mse',
+    monitor=['r2', 'r2_score'],
     models=[ "LinearRegression",
             "LassoLars",
             "Lasso",
@@ -41,19 +41,19 @@ results = pl.fit(data=data, process_results=False)
 
 ##############################################
 
-pl.optimizer._plot_convergence(save=False)
+pl.optimizer_._plot_convergence(save=False)
 
 ##############################################
 
-pl.optimizer._plot_parallel_coords(figsize=(16, 8), save=False)
+pl.optimizer_._plot_parallel_coords(figsize=(16, 8), save=False)
 
 ##############################################
 
-pl.optimizer._plot_distributions(save=False)
+pl.optimizer_._plot_distributions(save=False)
 
 ##############################################3
 
-pl.optimizer.plot_importance(save=False)
+pl.optimizer_.plot_importance(save=False)
 
 ###########################################
 
@@ -61,11 +61,11 @@ _ = plot_objective(results)
 
 ###########################################
 
-pl.optimizer._plot_evaluations(save=False)
+pl.optimizer_._plot_evaluations(save=False)
 
 ###########################################
 
-pl.optimizer._plot_edf(save=False)
+pl.optimizer_._plot_edf(save=False)
 
 ##############################################
 

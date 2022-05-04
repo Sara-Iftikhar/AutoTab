@@ -44,7 +44,7 @@ class TestMLRegression(unittest.TestCase):
         
         pl.fit(data=data)
 
-        best_val = float(list(pl.optimizer.best_xy().keys())[0].split('_')[0])
+        best_val = float(list(pl.optimizer_.best_xy().keys())[0].split('_')[0])
 
         pipeline = pl.get_best_pipeline_by_metric(metric_name='r2_score')
 
@@ -57,7 +57,9 @@ class TestMLRegression(unittest.TestCase):
 
         model.fit(data=data)
 
-        val_score = pl._evaluate_model(model, 'r2_score', data='validation')
+        val_score = pl.evaluate_model(model,
+                                      metric_name='r2_score',
+                                      data='validation')
 
         self.assertAlmostEqual(val_score + best_val, 1.0, places=5)
 

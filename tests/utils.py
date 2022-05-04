@@ -62,14 +62,15 @@ def build_basic(parent_algorithm="random",
     return pl
 
 
-def run_basic(data=None, **kwargs):
+def run_basic(data=None, process_results=True, **kwargs):
 
     if data is None:
         data = rgr_data
 
     pl = build_basic(**kwargs)
     pl.fit(
-        data=data
+        data=data,
+        process_results=process_results
     )
 
     return pl

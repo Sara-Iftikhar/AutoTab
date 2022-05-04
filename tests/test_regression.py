@@ -13,10 +13,14 @@ def warn(*args, **kwargs):
 warnings.warn = warn
 
 import matplotlib.pyplot as plt
-
+from ai4water.preprocessing import DataSet
 
 from utils import run_basic, build_basic, rgr_data
 
+ds = DataSet(rgr_data)
+train_x, train_y = ds.training_data()
+val_x, val_y = ds.validation_data()
+test_x, test_y = ds.test_data()
 
 class TestRegression(unittest.TestCase):
 
@@ -45,11 +49,21 @@ class TestRegression(unittest.TestCase):
         pl.cleanup()
         return
 
+    def test_basic_with_xy(self):
+
+        pl = build_basic()
+
+        pl.fit(x=train_x, y=train_y, validation_data=(val_x, val_y),
+               process_results=False)
+
+        pl.cleanup()
+        return
+
     def test_change_child_iter(self):
         """check that we can change the hpo iterations for a model"""
         pl = build_basic(models = ['Lasso', 'RandomForestRegressor'])
         pl.change_child_iteration({"RandomForestRegressor": 10})
-        pl.fit(data=rgr_data)
+        pl.fit(data=rgr_data, process_results=False)
         assert pl.child_val_scores_.shape[1] == 10
         pl.cleanup()
         return
@@ -69,7 +83,7 @@ class TestRegression(unittest.TestCase):
         space = {'max_depth': [5,10, 15, 20],
                  'n_estimators': [5,10, 15, 20]}
         pl.update_model_space({"RandomForestRegressor": space})
-        pl.fit(data=rgr_data)
+        pl.fit(data=rgr_data, process_results=False)
         assert len(pl.model_space['RandomForestRegressor']['param_space'])==2
         return
 
@@ -94,7 +108,10 @@ class TestRegression(unittest.TestCase):
             "Lasso",
             "RandomForestRegressor",
             "HistGradientBoostingRegressor",
-        ], child_iterations=0)
+        ],
+                       child_iterations=0,
+                       process_results=False
+                       )
         ax = pl.dumbbell_plot(data=rgr_data, metric_name='r2', show=self.show)
         assert isinstance(ax, plt.Axes)
         pl.cleanup()
@@ -108,7 +125,10 @@ class TestRegression(unittest.TestCase):
             "Lasso",
             "RandomForestRegressor",
             "HistGradientBoostingRegressor",
-        ], child_iterations=0)
+        ],
+                       child_iterations=0,
+                       process_results=False,
+                       )
         ax = pl.compare_models('r2', "bar_chart", show=self.show)
         assert isinstance(ax, plt.Axes)
         ax = pl.compare_models('r2', show=self.show)
@@ -122,7 +142,8 @@ class TestRegression(unittest.TestCase):
                        parent_iterations=12,
                        outputs_to_transform='tetx_coppml',
                        output_transformations=output_transformations,
-                       child_iterations = 0
+                       child_iterations = 0,
+                       process_results=False
                             )
 
         y_transformation = pl.parent_suggestions_[1]['y_transformation'][0]['method']
@@ -132,15 +153,19 @@ class TestRegression(unittest.TestCase):
 
     def test_tpe(self):
         pl = run_basic(parent_algorithm="tpe",
-        parent_iterations=12, eval_metric="nse", child_iterations=0)
-        pl.post_fit(data=rgr_data, show=False)
+                       parent_iterations=12,
+                       eval_metric="nse",
+                       child_iterations=0,
+                       process_results=False)
+        pl.post_fit(data=rgr_data, show=self.show)
         pl.cleanup()
 
         return
 
     def test_single_model(self):
-        pl = run_basic(models=["Lasso"])
-        pl.post_fit(data=rgr_data, show=False)
+        pl = run_basic(models=["Lasso"],
+                       process_results=False)
+        pl.post_fit(data=rgr_data, show=self.show)
         pl.cleanup()
         return
 

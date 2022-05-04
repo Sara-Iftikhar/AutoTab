@@ -6,16 +6,26 @@ import os
 import unittest
 
 from autotab import OptimizePipeline
+from ai4water.preprocessing import DataSet
 
 from utils import run_basic, build_basic, rgr_data
 
+ds = DataSet(rgr_data, verbosity=0)
+train_x, train_y = ds.training_data()
+val_x, val_y = ds.validation_data()
+test_x, test_y = ds.test_data()
 
 class TestMisc(unittest.TestCase):
+
+    show = False
 
     def test_r2_as_val_metric(self):
         """test a specifc val metric"""
         run_basic(eval_metric="r2",
-                  parent_iterations=10, child_iterations=0)
+                  parent_iterations=10,
+                  child_iterations=0,
+                  process_results=False
+                  )
 
         return
 
@@ -24,7 +34,9 @@ class TestMisc(unittest.TestCase):
                   cv_parent_hpo=True,
                   parent_iterations=10,
                   child_iterations=0,
-                  cross_validator={"KFold": {"n_splits": 5}}
+                  cross_validator={"KFold": {"n_splits": 5}},
+                  input_transformations=['log', 'log10', 'sqrt', 'robust'],
+                  process_results=False
                   )
         return
 
@@ -32,10 +44,22 @@ class TestMisc(unittest.TestCase):
         pl = run_basic(
             eval_metric="r2",
             child_iterations=0,
+            process_results=False,
         )
 
         pl2 = OptimizePipeline.from_config_file(os.path.join(pl.path, "config.json"))
-        pl2.post_fit(data=rgr_data)
+        pl2.post_fit(data=rgr_data, show=self.show)
+        return
+
+    def test_from_config_xy(self):
+        pl = build_basic(
+            eval_metric="r2",
+            child_iterations=0,
+        )
+        pl.fit(x=train_x, y=train_y, validation_data=(val_x, val_y), process_results=False)
+
+        pl2 = OptimizePipeline.from_config_file(os.path.join(pl.path, "config.json"))
+        pl2.post_fit(x=train_x, y=train_y, test_data=(test_x, test_y), show=self.show)
         return
 
     def test_model_names(self):
@@ -45,9 +69,23 @@ class TestMisc(unittest.TestCase):
         return
 
     def test_zero_child_iter(self):
-        pl = run_basic(parent_iterations=14, child_iterations=0)
-        pl.post_fit(data=rgr_data, show=False)
-        pl.cleanup()
+        pl = run_basic(parent_iterations=4,
+                       child_iterations=0,
+                       parent_algorithm="random",
+                       process_results=False)
+        assert pl.child_iter_ == pl.child_iterations
+        assert pl.child_val_scores_.size == 0
+
+        return
+
+    def test_zero_child_iter_xy(self):
+        pl = run_basic(parent_iterations=4,
+                       child_iterations=0,
+                       parent_algorithm="random",
+                       process_results=False
+                       )
+        assert pl.child_iter_ == pl.child_iterations
+        assert pl.child_val_scores_.size == 0
         return
 
     def test_grouped_transformations(self):
@@ -56,9 +94,10 @@ class TestMisc(unittest.TestCase):
                 'group1': ['tide_cm', 'wat_temp_c', 'sal_psu', 'pcp3_mm'],
                 'group2': ['pcp_mm', 'air_temp_c', 'rel_hum']
             },
-            child_iterations=0
+            child_iterations=0,
+            process_results=False
         )
-        pl.post_fit(data=rgr_data, show=False)
+        pl.post_fit(data=rgr_data, show=self.show)
         pl.cleanup()
         return
 

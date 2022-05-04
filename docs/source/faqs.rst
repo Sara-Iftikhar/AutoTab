@@ -20,6 +20,14 @@ algorithms.
     - atpe
     - cmaes
 
+what splitting scheme is used
+=============================
+By default it is supposed that the data is split into 3 sets i.e. training, validation
+and test sets. validation data is only used during pipeline optimization inside
+``.fit`` method while the test data is only used after optimization. If you have
+only two sets i.e. training and validation, set ``fit_on_all_train_data`` to False
+during ``post_fit``
+
 Is the pipeline optimized for test data or validation data?
 ===========================================================
 for validation data
@@ -275,6 +283,26 @@ What versions of underlying libraries do this package depends
 Currently `AutoTab` is strongly coupled with a ML python framework
 `AI4Water`, whose version should be 1.2 or greater. Another dependency
 is `h5py` which does not have any specific version requirement.
+
+how to use cross validation during pipeline optimization
+========================================================
+By default the pipeline is evaluated on the validation data according to ``eval_metric``.
+However, you can choose to perform cross validation on child or parent or on both
+iterations. To perform cross validation at parent iterations set ``cv_parent_hpo``
+to ``True``. Similarly to perform cross validation at child iteration, set ``cv_child_hpo``
+to True. You must pass the ``cross_validator`` argument as well to determine
+what kind of cross validation to be performed. Consider the following example
+
+.. code-block:: python
+
+    >>> from autotab import OptimizePipeline
+    >>> pl = OptimizePipeline(
+    ...
+    ...           cv_parent_hpo=True,
+    ...           cross_validator={"KFold": {"n_splits": 5}},
+    ...    )
+
+Instead of ``KFold``, we also choose ``LeaveOneOut``, or ``ShuffleSplit`` or ``TimeSeriesSplit``.
 
 
 how to change search space for batch_size and learning rate

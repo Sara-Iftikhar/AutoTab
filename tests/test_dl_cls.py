@@ -39,6 +39,7 @@ multi_cls_output_features = multi_cls_data.columns.tolist()[-1:]
 
 class TestClassification(unittest.TestCase):
 
+    show = False
     def test_binary(self):
         pl = run_basic(models=[
             "MLP",
@@ -56,9 +57,10 @@ class TestClassification(unittest.TestCase):
             monitor="f1_score",
             eval_metric="accuracy",
             data=bin_data,
+            process_results=False
         )
 
-        pl.post_fit(data=bin_data, show=False)
+        pl.post_fit(data=bin_data, show=self.show)
 
         return
 

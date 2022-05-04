@@ -34,6 +34,7 @@ class TestMisc(unittest.TestCase):
             child_iterations=0,
             epochs=20,
             category="DL",
+            process_results=False
         )
 
         return
@@ -48,6 +49,7 @@ class TestMisc(unittest.TestCase):
             child_algorithm="random",
             epochs=20,
             category="DL",
+            process_results=False,
         )
 
         return
@@ -63,6 +65,7 @@ class TestMisc(unittest.TestCase):
             epochs=20,
             ts_args={"lookback":5},
             category="DL",
+            process_results=False
         )
 
         return
