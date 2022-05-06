@@ -1,6 +1,7 @@
 [![Documentation Status](https://readthedocs.org/projects/autotab/badge/?version=latest)](https://autotab.readthedocs.io/en/latest/?badge=latest)
 [![PyPI version](https://badge.fury.io/py/autotab.svg)](https://badge.fury.io/py/autotab)
 [![DOI](https://zenodo.org/badge/433432707.svg)](https://zenodo.org/badge/latestdoi/433432707)
+[![Downloads](https://pepy.tech/badge/autotab)](https://pepy.tech/project/autotab)
 
 # autotab
 
@@ -47,7 +48,7 @@ pl = OptimizePipeline(
     child_algorithm="random",
     cv_parent_hpo=True,
     eval_metric='mse',
-    monitor=['r2', 'nse'],
+    monitor=['r2', 'r2_score'],
     input_transformations = transformations,
     output_transformations = transformations,
     models=[ "LinearRegression",
@@ -157,7 +158,7 @@ pl.evaluate_model(model, data=data)
 ```
 
 ```python
-pl.evaluate_model(model, data=data, metric_name='nse')
+pl.evaluate_model(model, data=data, metric_name='r2_score')
 ```
 
 ```python

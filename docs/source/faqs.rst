@@ -30,7 +30,7 @@ during ``post_fit``
 
 Is the pipeline optimized for test data or validation data?
 ===========================================================
-for validation data
+The pipeline is optimized for validation data.
 
 I don't want to optimize preprocessing step
 ===========================================
@@ -298,7 +298,7 @@ what kind of cross validation to be performed. Consider the following example
 
     >>> from autotab import OptimizePipeline
     >>> pl = OptimizePipeline(
-    ...
+    ...           ...    # add other arguments
     ...           cv_parent_hpo=True,
     ...           cross_validator={"KFold": {"n_splits": 5}},
     ...    )
@@ -320,7 +320,7 @@ achieve a different batch_size search space as below
 
     >>> from autotab import OptimizePipeline
     >>> pl = OptimizePipeline(
-    ...         ...
+    ...         ...  # add other arguments
     ...         category="DL
     ...           )
     ... pl.change_batch_size_space([32, 64, 128, 256, 512])

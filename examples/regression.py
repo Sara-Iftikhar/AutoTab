@@ -10,6 +10,12 @@ from autotab import OptimizePipeline
 
 data = busan_beach()
 
+print(data.shape)
+###########################################
+
+print(data.head())
+##########################################
+
 pl = OptimizePipeline(
     inputs_to_transform=data.columns.tolist()[0:-1],
     outputs_to_transform=data.columns.tolist()[-1:],
@@ -41,9 +47,13 @@ results = pl.fit(data=data, process_results=False)
 
 ##############################################
 
+# plot the convergence plot to illustrate how much improvement occurred w.r.t evaluation metric
+
 pl.optimizer_._plot_convergence(save=False)
 
 ##############################################
+
+# show searched space
 
 pl.optimizer_._plot_parallel_coords(figsize=(16, 8), save=False)
 
@@ -57,6 +67,7 @@ pl.optimizer_.plot_importance(save=False)
 
 ###########################################
 
+# plot first order and second order partial dependence plots gaussian process
 _ = plot_objective(results)
 
 ###########################################
@@ -78,6 +89,7 @@ pl.dumbbell_plot(data=data, save=False)
 ##############################################
 
 pl.dumbbell_plot(data=data, metric_name='r2', save=False)
+
 ##############################################
 
 pl.taylor_plot(data=data, save=False)
@@ -88,10 +100,12 @@ pl.compare_models()
 
 ##############################################
 
+# compare the performance of models
 pl.compare_models(plot_type="bar_chart")
 
 ##############################################
 
+# compare the performance of models w.r.t R2
 pl.compare_models("r2", plot_type="bar_chart")
 
 #################################################
@@ -100,4 +114,5 @@ print(f"all results are save in {pl.path} folder")
 
 #################################################
 
+# remove all the files/folders which are now nomore required.
 pl.cleanup()

@@ -794,9 +794,9 @@ class OptimizePipeline(PipelineMixin):
         Parameters
         ----------
             x : np.ndarray
-                input training data
+                input for training data
             y : np.ndarray
-                output/target/label data. It must of same length as ``x``.
+                output/target/label for training data. It must of same length as ``x``.
             data :
                 A pandas dataframe which contains input (x) and output (y) features
                 Only required if ``x`` and ``y`` are not given. The training and validation
@@ -804,9 +804,10 @@ class OptimizePipeline(PipelineMixin):
             validation_data :
                 validation data on which pipeline is optimized. Only required if ``data``
                 is not given.
-            previous_results : dict, optional
+            previous_results : dict, optional (default=None)
                 path of file which contains xy values.
-            process_results : bool
+            process_results : bool, optional (default=True)
+                Wether to perform postprocessing of optimization of results or not.
 
         Returns
         --------
@@ -1028,7 +1029,7 @@ class OptimizePipeline(PipelineMixin):
 
     def _build_model(
             self,
-            model: dict,
+            model,
             val_metric: str,
             x_transformation,
             y_transformation,
@@ -1040,8 +1041,19 @@ class OptimizePipeline(PipelineMixin):
         """
         build the ai4water Model. When overwriting this method, the user
         must return an instance of ai4water's Model_ class.
-        batch_size : only used when category is "DL".
-        lr : only used when category is "DL"
+
+        Parameters
+        ----------
+            model :
+                anything which can be fed to AI4Water's Model class.
+            x_transformation :
+            y_transformation :
+            prefix :
+            verbosity :
+            batch_size :
+                only used when category is "DL".
+            lr :
+                only used when category is "DL"
 
         .. Model:
             https://ai4water.readthedocs.io/en/master/model.html#ai4water._main.BaseModel
@@ -1145,6 +1157,11 @@ class OptimizePipeline(PipelineMixin):
             metric_name : str, optional
                 The metric must be recorded i.e. must be given as `monitor` argument.
                 If not given, then evaluation metric is used.
+
+        Returns
+        -------
+        int
+            the parent iteration on which metric was obtained.
         """
 
         metric_name = metric_name or self.eval_metric
