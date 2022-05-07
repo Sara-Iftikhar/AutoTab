@@ -20,6 +20,7 @@ from easy_mpl import dumbbell_plot, taylor_plot, circular_bar_plot, bar_chart
 import ai4water
 from ai4water import Model
 from ai4water._optimize import make_space
+from ai4water.utils.utils import find_best_weight
 from ai4water.hyperopt.utils import to_skopt_space
 from ai4water.utils.utils import dateandtime_now, jsonize
 from ai4water.hyperopt import Categorical, HyperOpt, Integer, Real
@@ -1918,9 +1919,14 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         model.config['verbosity'] = verbosity
         model.verbosity = verbosity
 
-        wpath = os.path.join(pipeline['path'], "weights",
-                             list(pipeline['model'].keys())[0])
-        model.update_weights(wpath)
+        if self.category == "ML":
+            wpath = os.path.join(pipeline['path'], "weights",
+                                 list(pipeline['model'].keys())[0])
+            model.update_weights(wpath)
+
+        else:
+            wpath = os.path.join(pipeline['path'], "weights")
+            model.update_weights(os.path.join(wpath, find_best_weight(wpath)))
 
         self._populate_results(model, train_data=train_data, test_data=test_data)
 
