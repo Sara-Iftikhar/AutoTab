@@ -126,6 +126,8 @@ setting values for ``batch_size`` and ``lr``.
     ...         output_features=output_features,
     ...         split_random=True,
     ...         epochs=100,
+    ...         category="DL",
+    ...         ts_args={"lookback": 14},
     ...     )
 
     >>> pl.fit(data=data)
@@ -149,6 +151,7 @@ stacks of Dense layers. The number of layers are also optimized.
     >>> output_features = data.columns.tolist()[-1:]
 
     >>> pl = OptimizePipeline(
+    ...         category="DL",
     ...         mode="classification",
     ...         eval_metric="accuracy",
     ...         inputs_to_transform=input_features,
@@ -195,3 +198,5 @@ For multi-class classification with neural networks, we must set
     >>>     )
     >>> pl.fit(data=multi_cls_data,)
 
+Check ClassificationMetrics class of SeqMetrics library for the name of metrics
+which can be used for monitoring

@@ -44,8 +44,9 @@ class TestMisc(unittest.TestCase):
         run_basic(models = [
             "MLP",
         ],
-            parent_iterations=10,
+            parent_iterations=5,
             child_iterations=5,
+            parent_algorithm="random",
             child_algorithm="random",
             epochs=20,
             category="DL",

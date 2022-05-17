@@ -84,6 +84,7 @@ METRIC_TYPES = {
     "pbias": "min",
     "bias": "min",
     "med_seq_error": "min",
+    "mae": "min",
 }
 
 def compare_func(metric_type:str):
@@ -133,6 +134,12 @@ class PipelineMixin(object):
             "log10": {'treat_negatives': True, 'replace_zeros': True},
             "sqrt": {'treat_negatives': True}
         }
+
+    @property
+    def _pp_plots(self)->list:
+        if self.mode == "regression":
+            return ["regression", "prediction", "murphy", "residual"]
+        return []
 
 class OptimizePipeline(PipelineMixin):
     """
@@ -434,6 +441,18 @@ class OptimizePipeline(PipelineMixin):
             self.batch_space = [Categorical([8, 16, 32, 64], name="batch_size")]
             self.lr_space = [Real(1e-5, 0.05, num_samples=10, name="lr")]
 
+    @property
+    def num_ins(self):
+        return len(self.input_features)
+
+    @property
+    def input_shape(self):
+        if self.category == "DL":
+            if "ts_args" in self.model_kwargs:
+                return self.model_kwargs['ts_args']['lookback'], self.num_ins
+            else:
+                return self.num_ins,
+        return
     @property
     def outputs_to_transform(self):
         return self._out_to_transform
@@ -888,6 +907,7 @@ class OptimizePipeline(PipelineMixin):
                 if arg in opt_paras:
                     kwargs[arg] = opt_paras.pop(arg)
             model_config = DL_MODELS[model](mode=self.mode,
+                                            input_shape=self.input_shape,
                                             output_features=self.num_outputs,
                                             **opt_paras)
         else:
@@ -951,6 +971,7 @@ class OptimizePipeline(PipelineMixin):
 
             if self.category == "DL":
                 model_config = DL_MODELS[model](mode=self.mode,
+                                                input_shape=self.input_shape,
                                                 output_features=self.num_outputs,
                                                 **suggestions)
             else:
@@ -1334,7 +1355,9 @@ class OptimizePipeline(PipelineMixin):
 
                 model_config = model_name
                 if self.category == "DL":
-                    model_config = DL_MODELS[model_name](mode=self.mode, output_features=self.num_outputs)
+                    model_config = DL_MODELS[model_name](mode=self.mode,
+                                                         input_shape=self.input_shape,
+                                                         output_features=self.num_outputs)
 
                 # build model
                 model = self._build_model(
@@ -2067,6 +2090,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             kwargs = list(model_config.values())[0]
 
             model_config = DL_MODELS[model_name](mode=self.mode,
+                                                 input_shape=self.input_shape,
                                                  output_features=self.num_outputs,
                                                  **kwargs)
 
@@ -2136,20 +2160,35 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         dictionary
         """
         if 'data' in train_data:
-            model.predict_on_training_data(**train_data, metrics="all")
+            model.predict_on_training_data(**train_data,
+                                           metrics="all",
+                                           #plots=self._pp_plots
+                                           )
         else:
-            model.predict(**train_data, metrics="all")
+            model.predict(**train_data, metrics="all", plots=self._pp_plots)
 
         if test_data:
-            t, p = model.predict(**test_data, return_true=True, metrics="all")
+            t, p = model.predict(**test_data, return_true=True, metrics="all",
+                                 plots=self._pp_plots)
         else:
 
             # if data is split into 2 sets, we don't have test set.
             if model.config['train_fraction']<1.0:
-                model.predict_on_validation_data(**train_data, metrics="all")
-                t, p = model.predict_on_test_data(**train_data, metrics="all", return_true=True)
+                model.predict_on_validation_data(**train_data,
+                                                 metrics="all",
+                                                 #plots=self._pp_plots
+                                                 )
+                t, p = model.predict_on_test_data(**train_data,
+                                                  metrics="all",
+                                                  return_true=True,
+                                                  #plots=self._pp_plots
+                                                  )
             else:
-                t, p = model.predict_on_validation_data(**train_data, metrics="all", return_true=True)
+                t, p = model.predict_on_validation_data(**train_data,
+                                                        metrics="all",
+                                                        return_true=True,
+                                                        #plots=self._pp_plots
+                                                        )
 
         if model_name:
             self.taylor_plot_data_['observations']['test'] = t
@@ -2266,6 +2305,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                 kwargs = list(model_config.values())[0]
 
                 model_config = DL_MODELS[model_name](mode=self.mode,
+                                                     input_shape=self.input_shape,
                                                      output_features=self.num_outputs,
                                                      **kwargs)
             _ = self._build_and_eval_from_scratch(
