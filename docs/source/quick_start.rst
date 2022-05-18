@@ -184,10 +184,12 @@ For multi-class classification with neural networks, we must set
 
     >>> from autotab import OptimizePipeline
     >>> from sklearn.datasets import make_classification
-    >>> x,y = make_classification(n_classes=4,  n_informative=4)
+    ... # make hypothetical data
+    >>> x,y = make_classification(500, n_classes=4,  n_informative=4)
     >>> inputs=[f"input_{i}" for i in range(x.shape[1])]
     >>> outputs = ["target"]
     >>> data = pd.DataFrame(np.hstack([x, y.reshape(-1,1)]), columns=inputs+outputs)
+    ...
     >>> pl = OptimizePipeline(models=[
     ...         "MLP",
     ...     ],
@@ -203,7 +205,6 @@ For multi-class classification with neural networks, we must set
     ...         num_classes = 4,
     ...         eval_metric="accuracy",
     ...         monitor="f1_score",
-    ...         ts_args={"lookback": 5},
     ...     )
     >>> pl.fit(data=data)
 

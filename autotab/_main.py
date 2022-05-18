@@ -64,7 +64,8 @@ SEP = os.sep
 
 DEFAULT_TRANSFORMATIONS = [
     "minmax", "center", "scale", "zscore", "box-cox", "yeo-johnson",
-    "quantile", "robust", "log", "log2", "log10", "sqrt", "none",
+    "quantile", #"quantile_normal",
+    "robust", "log", "log2", "log10", "sqrt", "none",
               ]
 
 METRIC_TYPES = {
@@ -111,6 +112,8 @@ class PipelineMixin(object):
 
     def __init__(
             self,
+            input_features,
+            output_features,
             mode,
             category,
     ):
@@ -120,8 +123,15 @@ class PipelineMixin(object):
         assert category in ("DL", "ML")
         self.category = category
 
-        self.transformations = {
-            "quantile": {'output_distribution': 'normal'},
+        self.input_features = input_features
+
+        if isinstance(output_features, str):
+            output_features = [output_features]
+        self.output_features = output_features
+
+        transformations = {
+            "quantile": {},
+            #"quantile_normal": {},
             "minmax": {},
             "center": {},
             "scale": {},
@@ -134,6 +144,14 @@ class PipelineMixin(object):
             "log10": {'treat_negatives': True, 'replace_zeros': True},
             "sqrt": {'treat_negatives': True}
         }
+
+        self.feature_transformations = {}
+        for feat in self.all_features:
+            self.feature_transformations[feat] = transformations
+
+    @property
+    def all_features(self)->list:
+        return self.input_features + self.output_features
 
     @property
     def _pp_plots(self)->list:
@@ -199,7 +217,9 @@ class OptimizePipeline(PipelineMixin):
 
     def __init__(
             self,
-            inputs_to_transform,
+            input_features,
+            output_features,
+            inputs_to_transform: Union[list, dict] = None,
             input_transformations: Union[list, dict] = None,
             outputs_to_transform=None,
             output_transformations: Union[list, ] = None,
@@ -223,12 +243,15 @@ class OptimizePipeline(PipelineMixin):
 
         Parameters
         ----------
-            inputs_to_transform : list
+            input_features : list
+            output_features : str
+            inputs_to_transform : list, optional, (default=None)
                 Input features on which feature engineering/transformation is to
                 be applied. By default all input features are considered. If you
                 want to apply a single transformation on a group of input features,
                 then pass this as a dictionary. This is helpful if the input data
-                consists of hundred or thousands of input features.
+                consists of hundred or thousands of input features. If None (default)
+                transformations will be applied on all input features.
             input_transformations : list, dict
                 The transformations to be considered for input features. Default
                 is None, in which case all input features are considered.
@@ -244,6 +267,7 @@ class OptimizePipeline(PipelineMixin):
                     - ``box-cox``
                     - ``yeo-johnson``
                     - ``quantile``
+                    - ``quantile_normal``
                     - ``robust``
                     - ``log``
                     - ``log2``
@@ -332,6 +356,9 @@ class OptimizePipeline(PipelineMixin):
 
         .. [7] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.TFT
         """
+        if inputs_to_transform is None:
+            inputs_to_transform = input_features
+
         if isinstance(inputs_to_transform, dict):
             self._groups = inputs_to_transform
             self.inputs_to_transform = list(inputs_to_transform.keys())
@@ -343,7 +370,10 @@ class OptimizePipeline(PipelineMixin):
 
         self.output_transformations = output_transformations or DEFAULT_TRANSFORMATIONS
 
-        super(OptimizePipeline, self).__init__(mode, category)
+        super(OptimizePipeline, self).__init__(input_features,
+                                               output_features,
+                                               mode,
+                                               category)
 
         self.num_classes = num_classes
 
@@ -389,7 +419,10 @@ class OptimizePipeline(PipelineMixin):
         for arg in ['model', 'x_transformation', 'y_transformation']:
             if arg in model_kwargs:
                 raise ValueError(f"argument {arg} not allowed")
+        model_kwargs['input_features'] = input_features
+        model_kwargs['output_features'] = output_features
         self.model_kwargs = model_kwargs
+
         self.outputs_to_transform = outputs_to_transform
         if outputs_to_transform is not None:
             if isinstance(outputs_to_transform, str):
@@ -484,23 +517,6 @@ class OptimizePipeline(PipelineMixin):
     @property
     def Metrics(self):
         return Metrics[self.mode]
-
-    @property
-    def input_features(self):
-        if 'input_features' in self.model_kwargs:
-            return self.model_kwargs['input_features']
-        else:
-            raise ValueError
-
-    @property
-    def output_features(self):
-        if 'output_features' in self.model_kwargs:
-            _output_features = self.model_kwargs['output_features']
-            if isinstance(_output_features, str):
-                _output_features = [_output_features]
-            return _output_features
-        else:
-            raise ValueError
 
     @property
     def num_outputs(self):
@@ -736,6 +752,65 @@ class OptimizePipeline(PipelineMixin):
             self.lr_space = [Categorical(space, name="lr")]
         else:
             self.lr_space = [Real(low, high, name="lr", num_samples=10)]
+        return
+
+    def change_transformation_behavior(
+            self,
+            transformation:str,
+            new_behavior:dict,
+            features:Union[list, str] = None
+    )->None:
+        """change the behvior of a transformation i.e. the way it is applied.
+        If ``features`` is not not given, it will modify the behavior of transformation
+        for all features. This function modified the ``feature_transformations``
+        class attribute.
+
+        Parameters
+        ----------
+            transformation : str
+                The name of transformation whose behavior is to be modified.
+            new_behavior : dict
+                key, word arguments which determine the new behavior of Transformation.
+                These key,word arguments are given to the specifified transformation
+                when it is initialized.
+            features : str/list, optional (default=None)
+                The name or names of features for which the behavior should be modified.
+
+        Returns
+        -------
+        None
+
+        Example
+        -------
+        >>> from autotab import OptimizePipeline
+        >>> from ai4water.datasets import busan_beach
+
+        >>> data = busan_beach()
+        >>> input_features=data.columns.tolist()[0:-1]
+        >>> output_features=data.columns.tolist()[-1:]
+        >>> pl = OptimizePipeline(
+        ...                    input_features=input_features,
+        ...                    output_features=output_features
+        ...                     )
+        >>> pl.change_transformation_behavior('yeo-johnson', {'pre_center': True}, 'wind_dir_deg')
+        ... # we can change behavior behavior for multiple feautres as well
+        >>> pl.change_transformation_behavior('yeo-johnson', {'pre_center': True},
+        ...                                   ['air_p_hpa',  'mslp_hpa'])
+        """
+        assert transformation in DEFAULT_TRANSFORMATIONS
+
+        if features is None:
+            features = self.all_features
+        elif isinstance(features, str):
+            features = [features]
+
+        assert all([feature in self.all_features for feature in features])
+
+        assert isinstance(new_behavior, dict)
+
+        for feature in features:
+            self.feature_transformations[feature][transformation] = new_behavior
+
         return
 
     @property
@@ -1040,7 +1115,7 @@ class OptimizePipeline(PipelineMixin):
                     t_config = {"method": method, "features": self._groups[feature]}
 
                     # some preprocessing is required for log based transformations
-                    t_config.update(self.transformations[method])
+                    t_config.update(self.feature_transformations[feature][method])
 
                     if feature in self.inputs_to_transform:
                         x_transformations.append(t_config)
