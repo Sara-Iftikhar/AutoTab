@@ -146,7 +146,7 @@ stacks of Dense layers. The number of layers are also optimized.
     >>> from ai4water.datasets import MtropicsLaos
     >>> from autotab import OptimizePipeline
 
-    >>> data = MtropicsLaos().make_classification(lookback_steps=1,)
+    >>> data = MtropicsLaos().make_classification(lookback_steps=5,)
     >>> input_features = data.columns.tolist()[0:-1]
     >>> output_features = data.columns.tolist()[-1:]
 
@@ -166,6 +166,8 @@ stacks of Dense layers. The number of layers are also optimized.
     ...         output_features=output_features,
     ...         split_random=True,
     ...         epochs=100,
+    ...         num_classes=2,
+    ...         ts_args={"lookback": 5},
     ...     )
 
     >>> pl.fit(data=data)
@@ -179,24 +181,31 @@ For multi-class classification with neural networks, we must set
 ``num_classes`` argument to some value greater than 2.
 
 .. code-block:: python
+
     >>> from autotab import OptimizePipeline
+    >>> from sklearn.datasets import make_classification
+    >>> x,y = make_classification(n_classes=4,  n_informative=4)
+    >>> inputs=[f"input_{i}" for i in range(x.shape[1])]
+    >>> outputs = ["target"]
+    >>> data = pd.DataFrame(np.hstack([x, y.reshape(-1,1)]), columns=inputs+outputs)
     >>> pl = OptimizePipeline(models=[
-    >>>         "MLP",
-    >>>     ],
-    >>>         input_features=multi_cls_input_features,
-    >>>         output_features=multi_cls_output_features,
-    >>>         parent_algorithm="bayes",
-    >>>         loss="categorical_crossentropy",
-    >>>         parent_iterations=10,
-    >>>         child_iterations=0,
-    >>>         epochs=20,
-    >>>         category="DL",
-    >>>         mode="classification",
-    >>>         num_classes = 4,
-    >>>         eval_metric="accuracy",
-    >>>         monitor="f1_score",
-    >>>     )
-    >>> pl.fit(data=multi_cls_data,)
+    ...         "MLP",
+    ...     ],
+    ...         input_features=inputs,
+    ...         output_features=outputs,
+    ...         parent_algorithm="bayes",
+    ...         loss="categorical_crossentropy",
+    ...         parent_iterations=10,
+    ...         child_iterations=0,
+    ...         epochs=20,
+    ...         category="DL",
+    ...         mode="classification",
+    ...         num_classes = 4,
+    ...         eval_metric="accuracy",
+    ...         monitor="f1_score",
+    ...         ts_args={"lookback": 5},
+    ...     )
+    >>> pl.fit(data=data)
 
 Check ClassificationMetrics class of SeqMetrics library for the name of metrics
 which can be used for monitoring
