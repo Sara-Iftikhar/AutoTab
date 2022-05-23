@@ -32,6 +32,25 @@ Is the pipeline optimized for test data or validation data?
 ===========================================================
 The pipeline is optimized for validation data.
 
+What transformations are considered by default?
+===============================================
+To find out the transformations being considered, you can
+print the ``DEFAULT_TRANSFORMATIONS`` variable as below
+
+.. code-block:: python
+
+    >>> from autotab._main import DEFAULT_TRANSFORMATIONS
+    >>> print(DEFAULT_TRANSFORMATIONS)
+
+if you want to know the transformations being considered for a specific
+feature in the pipeline then use following code
+
+.. code-block:: python
+
+    >>> from autotab import OptimizePipeline
+    >>> pl = OptimizePipeline(...)
+    >>> pl.feature_transformations[feature_name]
+
 I don't want to optimize preprocessing step
 ===========================================
 If you dont want any preprocessing steps, keep `inputs_to_transform`

@@ -27,7 +27,7 @@ from ai4water.hyperopt import Categorical, HyperOpt, Integer, Real
 from ai4water.models import MLP, CNN, LSTM, CNNLSTM, LSTMAutoEncoder, TFT, TCN
 from ai4water.experiments.utils import regression_space, classification_space, dl_space
 
-assert ai4water.__version__ >= "1.02"
+assert ai4water.__version__ >= "1.04"
 
 
 # TODO's
@@ -64,7 +64,7 @@ SEP = os.sep
 
 DEFAULT_TRANSFORMATIONS = [
     "minmax", "center", "scale", "zscore", "box-cox", "yeo-johnson",
-    "quantile", #"quantile_normal",
+    "quantile", "quantile_normal",
     "robust", "log", "log2", "log10", "sqrt", "none",
               ]
 
@@ -131,7 +131,7 @@ class PipelineMixin(object):
 
         transformations = {
             "quantile": {},
-            #"quantile_normal": {},
+            "quantile_normal": {},
             "minmax": {},
             "center": {},
             "scale": {},
@@ -156,8 +156,9 @@ class PipelineMixin(object):
     @property
     def _pp_plots(self)->list:
         if self.mode == "regression":
-            return ["regression", "prediction", "murphy", "residual"]
+            return ["regression", "prediction", "murphy", "residual", "edf"]
         return []
+
 
 class OptimizePipeline(PipelineMixin):
     """
@@ -396,8 +397,8 @@ class OptimizePipeline(PipelineMixin):
                 raise ValueError(f"models contain repeating values. \n{models}")
 
             if self.category == "DL":
-                assert all([model in DL_MODELS.keys() for model in models]), f"""
-                Only following deel learning models can be considered {DL_MODELS.keys()}
+                assert all([model in self.models for model in models]), f"""
+                Only following deep learning models can be considered {DL_MODELS.keys()}
                 """
 
         self.parent_iterations = parent_iterations
@@ -578,6 +579,9 @@ class OptimizePipeline(PipelineMixin):
             assert len(model_config) == 1, f"model config has length of 1 {len(model_config)}"
             assert 'layers' in model_config, f"model config must have 'layers' key {model_config.keys()}"
 
+            if not isinstance(space, list):
+                space = [space]
+
             model_name = model.__name__
             space = to_skopt_space(space)
             self.models.append(model_name)
@@ -619,6 +623,9 @@ class OptimizePipeline(PipelineMixin):
             self._child_iters[model_name] = self.child_iterations
 
         return
+
+    def remove_transformation(self, transformation, feature):
+        raise NotImplementedError
 
     def remove_model(self, models: Union[str, list]) -> None:
         """
@@ -819,6 +826,19 @@ class OptimizePipeline(PipelineMixin):
         # this property calculates maximum child iterations
         return max(self._child_iters.values())
 
+    def training_data(self, *args, **kwargs)->Tuple[np.ndarray, np.ndarray]:
+        raise NotImplementedError
+
+    def validation_data(self, *args, **kwargs)->Tuple[np.ndarray, np.ndarray]:
+        raise NotImplementedError
+
+    def test_data(self, *args, **kwargs)->Tuple[np.ndarray, np.ndarray]:
+        raise NotImplementedError
+
+    def _save_data(self, *args, **kwargs)->None:
+        raise NotImplementedError
+
+
     def reset(self):
         # called at the start of fit method
 
@@ -989,7 +1009,7 @@ class OptimizePipeline(PipelineMixin):
             model_config = {model: opt_paras}
 
         # fit the model with optimized hyperparameters and suggested transformations
-        _model = self._build_model(
+        _model = self.build_model(
             model=model_config,
             val_metric=self.eval_metric,
             x_transformation=x_trnas,
@@ -1053,7 +1073,7 @@ class OptimizePipeline(PipelineMixin):
                 model_config = {model: suggestions}
 
             # build child model
-            _model = self._build_model(
+            _model = self.build_model(
                 model=model_config,
                 val_metric=self.eval_metric,
                 x_transformation=x_transformations,
@@ -1124,7 +1144,7 @@ class OptimizePipeline(PipelineMixin):
 
         return x_transformations, y_transformations
 
-    def _build_model(
+    def build_model(
             self,
             model,
             val_metric: str,
@@ -1143,6 +1163,7 @@ class OptimizePipeline(PipelineMixin):
         ----------
             model :
                 anything which can be fed to AI4Water's Model class.
+            val_metric :
             x_transformation :
             y_transformation :
             prefix :
@@ -1168,6 +1189,19 @@ class OptimizePipeline(PipelineMixin):
             **self.model_kwargs
         )
         return model
+
+    def build_model_from_config(self, cpath:str)->Model:
+        """builds a model from config. If the user overwrites `build_model`,
+        then the user must also overwrite this function. Otherwise post-processing
+        will not work
+
+        Parameters
+        ----------
+            cpath : str
+                complete path of config file
+        """
+
+        return Model.from_config_file(cpath)
 
     def _fit_and_eval(
             self,
@@ -1435,7 +1469,7 @@ class OptimizePipeline(PipelineMixin):
                                                          output_features=self.num_outputs)
 
                 # build model
-                model = self._build_model(
+                model = self.build_model(
                     model=model_config,
                     val_metric=self.eval_metric,
                     prefix=f"{self.parent_prefix_}{SEP}baselines",
@@ -2013,7 +2047,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         cpath = os.path.join(pipeline['path'], "config.json")
         if verbosity:
             print(f"building using config file from {cpath}")
-        model = Model.from_config_file(cpath)
+        model = self.build_model_from_config(cpath)
         model.config['verbosity'] = verbosity
         model.verbosity = verbosity
 
@@ -2199,7 +2233,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         """builds and evaluates the model from scratch. If model_name is given,
         model's predictions are saved in 'taylor_plot_data_' dictionary
         """
-        model = self._build_model(
+        model = self.build_model(
             model=model,
             x_transformation=x_transformation,
             y_transformation=y_transformation,
