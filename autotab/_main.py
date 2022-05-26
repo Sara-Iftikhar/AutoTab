@@ -129,7 +129,7 @@ class PipelineMixin(object):
             output_features = [output_features]
         self.output_features = output_features
 
-        transformations = {
+        self._transformations_methods = {
             "quantile": {},
             "quantile_normal": {},
             "minmax": {},
@@ -147,7 +147,7 @@ class PipelineMixin(object):
 
         self.feature_transformations = {}
         for feat in self.all_features:
-            self.feature_transformations[feat] = transformations
+            self.feature_transformations[feat] = self._transformations_methods
 
     @property
     def all_features(self)->list:
@@ -361,9 +361,13 @@ class OptimizePipeline(PipelineMixin):
             inputs_to_transform = input_features
 
         if isinstance(inputs_to_transform, dict):
+            # apply same transformation on group of inputs
             self._groups = inputs_to_transform
             self.inputs_to_transform = list(inputs_to_transform.keys())
+            self.groups_present = True
         else:
+            self.groups_present = False
+            # apply unique transformation on each input feature
             self._groups = {inp:[inp] for inp in inputs_to_transform}
             self.inputs_to_transform = inputs_to_transform
 
@@ -375,6 +379,9 @@ class OptimizePipeline(PipelineMixin):
                                                output_features,
                                                mode,
                                                category)
+
+        if self.groups_present:
+            self.feature_transformations = {k:self._transformations_methods for k in inputs_to_transform.keys()}
 
         self.num_classes = num_classes
 
@@ -805,6 +812,8 @@ class OptimizePipeline(PipelineMixin):
         ...                                   ['air_p_hpa',  'mslp_hpa'])
         """
         assert transformation in DEFAULT_TRANSFORMATIONS
+
+        assert not self.groups_present  # todo
 
         if features is None:
             features = self.all_features
@@ -1978,6 +1987,10 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             with open(fpath, 'r') as fp:
                 cls.baseline_results_ = json.load(fp)
 
+        for arg in ['input_features', 'output_features']:
+            if arg in model_kwargs:
+                model_kwargs.pop(arg)
+
         return cls(**config['init_paras'], **model_kwargs)
 
     @classmethod
@@ -2271,7 +2284,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         if 'data' in train_data:
             model.predict_on_training_data(**train_data,
                                            metrics="all",
-                                           #plots=self._pp_plots
+                                           plots=self._pp_plots
                                            )
         else:
             model.predict(**train_data, metrics="all", plots=self._pp_plots)
@@ -2285,18 +2298,18 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             if model.config['train_fraction']<1.0:
                 model.predict_on_validation_data(**train_data,
                                                  metrics="all",
-                                                 #plots=self._pp_plots
+                                                 plots=self._pp_plots
                                                  )
                 t, p = model.predict_on_test_data(**train_data,
                                                   metrics="all",
                                                   return_true=True,
-                                                  #plots=self._pp_plots
+                                                  plots=self._pp_plots
                                                   )
             else:
                 t, p = model.predict_on_validation_data(**train_data,
                                                         metrics="all",
                                                         return_true=True,
-                                                        #plots=self._pp_plots
+                                                        plots=self._pp_plots
                                                         )
 
         if model_name:

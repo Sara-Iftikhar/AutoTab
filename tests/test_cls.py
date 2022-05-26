@@ -23,6 +23,7 @@ class TestBinaryCls(unittest.TestCase):
         pl = OptimizePipeline(
             inputs_to_transform=inputs_cls,
             input_features = inputs_cls,
+            output_features=outputs_cls,
             mode="classification",
             eval_metric="accuracy",
             train_fraction=1.0,

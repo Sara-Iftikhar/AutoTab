@@ -32,7 +32,8 @@ class TestMisc(unittest.TestCase):
     def test_cv(self):
         run_basic(eval_metric="r2",
                   cv_parent_hpo=True,
-                  parent_iterations=10,
+                  parent_iterations=3,
+                  parent_algorithm="random",
                   child_iterations=0,
                   cross_validator={"KFold": {"n_splits": 5}},
                   input_transformations=['log', 'log10', 'sqrt', 'robust'],
@@ -99,6 +100,11 @@ class TestMisc(unittest.TestCase):
         )
         pl.post_fit(data=rgr_data, show=self.show)
         pl.cleanup()
+        return
+
+    def test_no_model(self):
+        pl = OptimizePipeline(input_features=['a'], output_features="", models=[])
+        assert len(pl.models) == 0
         return
 
 

@@ -137,9 +137,10 @@ setting values for ``batch_size`` and ``lr``.
 deep learning models (classification)
 =====================================
 
-This covers MLP, LSTM, CNN, CNNLSTM, TFT, TCN, LSTMAutoEncoder for classification problem.
-Each model can consist of stacks of layers. For example MLP can consist of
-stacks of Dense layers. The number of layers are also optimized.
+This covers ``MLP``, ``LSTM``, ``CNN``, ``CNNLSTM``, ``TFT, ``TCN``, ``LSTMAutoEncoder``
+for classification problem. Each model can consist of stacks of layers.
+For example MLP can consist of stacks of Dense layers. The number of layers
+are also optimized.
 
 .. code-block:: python
 
@@ -182,6 +183,8 @@ For multi-class classification with neural networks, we must set
 
 .. code-block:: python
 
+    >>> import numpy as np
+    >>> import pandas as pd
     >>> from autotab import OptimizePipeline
     >>> from sklearn.datasets import make_classification
     ... # make hypothetical data
@@ -208,5 +211,6 @@ For multi-class classification with neural networks, we must set
     ...     )
     >>> pl.fit(data=data)
 
-Check ClassificationMetrics class of SeqMetrics library for the name of metrics
+Check `ClassificationMetrics <https://seqmetrics.readthedocs.io/en/latest/cls.html#classificationmetrics>_`  class of
+`SeqMetrics <https://seqmetrics.readthedocs.io/en/latest/index.html>_` library for the name of metrics
 which can be used for monitoring
