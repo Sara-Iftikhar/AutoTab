@@ -107,6 +107,16 @@ class TestMisc(unittest.TestCase):
         assert len(pl.models) == 0
         return
 
+    def test_no_train_on_all_data(self):
+        """test a specifc val metric"""
+        pl = build_basic(
+            eval_metric="r2",
+            child_iterations=0,
+        )
+        pl.fit(data=rgr_data, process_results=False)
+        pl.post_fit(data=rgr_data, fit_on_all_train_data=False, show=self.show)
+
+        return
 
 if __name__ == "__main__":
     unittest.main()
