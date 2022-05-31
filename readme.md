@@ -112,7 +112,7 @@ _ = plot_objective(results)
 ```
 
 ```python
-pl.optimizer._plot_evaluations(save=False)
+pl.optimizer_._plot_evaluations(save=False)
 ```
 
 ```python

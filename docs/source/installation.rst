@@ -26,7 +26,7 @@ The latest code however (possibly with less bugs and more features) can be insal
 
 To install the latest branch (`dev`) with all requirements use ``all`` keyword
 ::
-    python -m pip install "AI4Water[all] @ git+https://github.com/Sara-Iftikhar/AutoTab.git@dev"
+    python -m pip install "AutoTab[all] @ git+https://github.com/Sara-Iftikhar/AutoTab.git@dev"
 
 using setup.py file
 ===================

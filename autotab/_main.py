@@ -153,7 +153,6 @@ class PipelineMixin(object):
     def all_features(self)->list:
         return self.input_features + self.output_features
 
-    @property
     def _pp_plots(self)->list:
         if self.mode == "regression":
             return ["regression", "prediction", "murphy", "residual", "edf"]
@@ -2284,32 +2283,32 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         if 'data' in train_data:
             model.predict_on_training_data(**train_data,
                                            metrics="all",
-                                           plots=self._pp_plots
+                                           plots=self._pp_plots()
                                            )
         else:
-            model.predict(**train_data, metrics="all", plots=self._pp_plots)
+            model.predict(**train_data, metrics="all", plots=self._pp_plots())
 
         if test_data:
             t, p = model.predict(**test_data, return_true=True, metrics="all",
-                                 plots=self._pp_plots)
+                                 plots=self._pp_plots())
         else:
 
             # if data is split into 2 sets, we don't have test set.
             if model.config['train_fraction']<1.0:
                 model.predict_on_validation_data(**train_data,
                                                  metrics="all",
-                                                 plots=self._pp_plots
+                                                 plots=self._pp_plots()
                                                  )
                 t, p = model.predict_on_test_data(**train_data,
                                                   metrics="all",
                                                   return_true=True,
-                                                  plots=self._pp_plots
+                                                  plots=self._pp_plots()
                                                   )
             else:
                 t, p = model.predict_on_validation_data(**train_data,
                                                         metrics="all",
                                                         return_true=True,
-                                                        plots=self._pp_plots
+                                                        plots=self._pp_plots()
                                                         )
 
         if model_name:
@@ -2550,8 +2549,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         """
         Compares all the models with respect to a metric and plots a bar plot.
 
-         Parameters
-         ----------
+        Parameters
+        ----------
             metric_name : str, optional
                 The metric with respect to which to compare the models.
             plot_type : str, optional
