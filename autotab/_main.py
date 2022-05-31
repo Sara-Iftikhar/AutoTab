@@ -2260,7 +2260,9 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         if 'data' in train_data:
             if fit_on_all_train_data:
                 model.fit_on_all_training_data(**train_data)
-                model.dh_.to_disk(model.path)
+            else:
+                model.fit(**train_data)
+            model.dh_.to_disk(model.path)
         else:
             model.fit(**train_data)
             # todo, save x,y in disk
