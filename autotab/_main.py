@@ -8,24 +8,48 @@ import math
 import types
 import shutil
 import inspect
-from typing import Union, Callable, Tuple
-from collections import OrderedDict, defaultdict
+from typing import Union
+from typing import Tuple
+from typing import Callable
+from collections import OrderedDict
+from collections import defaultdict
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from SeqMetrics import RegressionMetrics, ClassificationMetrics
-from easy_mpl import dumbbell_plot, taylor_plot, circular_bar_plot, bar_chart
+from SeqMetrics import RegressionMetrics
+from SeqMetrics import ClassificationMetrics
+
+from easy_mpl import bar_chart
+from easy_mpl import taylor_plot
+from easy_mpl import dumbbell_plot
+from easy_mpl import circular_bar_plot
 
 import ai4water
 from ai4water import Model
+
+from ai4water.models import MLP
+from ai4water.models import CNN
+from ai4water.models import LSTM
+from ai4water.models import TFT
+from ai4water.models import TCN
+from ai4water.models import CNNLSTM
+from ai4water.models import LSTMAutoEncoder
+
+from ai4water.utils.utils import jsonize
 from ai4water._optimize import make_space
 from ai4water.utils.utils import find_best_weight
 from ai4water.hyperopt.utils import to_skopt_space
-from ai4water.utils.utils import dateandtime_now, jsonize
-from ai4water.hyperopt import Categorical, HyperOpt, Integer, Real
-from ai4water.models import MLP, CNN, LSTM, CNNLSTM, LSTMAutoEncoder, TFT, TCN
-from ai4water.experiments.utils import regression_space, classification_space, dl_space
+from ai4water.utils.utils import dateandtime_now
+
+from ai4water.experiments.utils import dl_space
+from ai4water.experiments.utils import regression_space
+from ai4water.experiments.utils import classification_space
+
+from ai4water.hyperopt import Real
+from ai4water.hyperopt import Integer
+from ai4water.hyperopt import HyperOpt
+from ai4water.hyperopt import Categorical
 
 assert ai4water.__version__ >= "1.04"
 
@@ -87,25 +111,6 @@ METRIC_TYPES = {
     "med_seq_error": "min",
     "mae": "min",
 }
-
-def compare_func(metric_type:str):
-    if metric_type == "min":
-        return np.less_equal
-    return np.greater_equal
-
-
-def compare_func1(metric_type:str):
-    if metric_type == "min":
-        return np.nanmin
-    return np.nanmax
-
-
-def fill_val(metric_type:str, best_so_far):
-    if math.isfinite(best_so_far):
-        return best_so_far
-    if metric_type == "min":
-        return 99999999999999
-    return -9999999999
 
 
 class PipelineMixin(object):
@@ -269,9 +274,9 @@ class OptimizePipeline(PipelineMixin):
                     - ``quantile``
                     - ``quantile_normal``
                     - ``robust``
-                    - ``log``
-                    - ``log2``
-                    - ``log10``
+                    - ``log``  natural logarithm
+                    - ``log2``  log with base 2
+                    - ``log10``  log with base 10
                     - ``sqrt``    square root
 
                 The user can however, specify list of transformations to be considered
@@ -355,8 +360,9 @@ class OptimizePipeline(PipelineMixin):
         .. [6] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.TCN
 
         .. [7] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.TFT
+
         """
-        if inputs_to_transform is None:
+        if not inputs_to_transform:
             inputs_to_transform = input_features
 
         if isinstance(inputs_to_transform, dict):
@@ -1044,7 +1050,7 @@ class OptimizePipeline(PipelineMixin):
             eval_metrics=True,
         )
 
-        self.val_scores_[self.parent_iter_] = val_score  # -1 because array indexing starts from 0
+        self.val_scores_[self.parent_iter_] = val_score
 
         _val_score = val_score if np.less_equal(val_score, np.nanmin(self.val_scores_[:self.parent_iter_+1 ])) else ''
 
@@ -1198,26 +1204,36 @@ class OptimizePipeline(PipelineMixin):
         )
         return model
 
-    def build_model_from_config(self, cpath:str)->Model:
-        """builds a model from config. If the user overwrites `build_model`,
-        then the user must also overwrite this function. Otherwise post-processing
-        will not work
+    def build_model_from_config(
+            self,
+            cpath:str
+    )->Model:
+        """builds a model from config.
+        If the user overwrites `py:meth:build_model`, then the user must also
+        overwrite this function. Otherwise post-processing will not work
 
         Parameters
         ----------
             cpath : str
                 complete path of config file
+
+        Returns
+        -------
+        Model
+            an instance of `:py:class:ai4water.Model` class
         """
 
         return Model.from_config_file(cpath)
 
     def _fit_and_eval(
             self,
-            model,
+            model: ai4water.Model,
             cross_validate:bool = False,
             eval_metrics:bool = False,
     ) -> float:
-        """fits the model and evaluates it and returns the score"""
+        """fits the model and evaluates it and returns the score.
+        This method also populates on entry/row in `:py:attribute:metrics_` dataframe.
+        """
         if cross_validate:
             # val_score will be obtained by performing cross validation
             if self.val_data_:  # keyword data
@@ -1854,9 +1870,24 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         return init_paras
 
     @staticmethod
-    def _version_info() -> dict:
+    def _sys_info()->dict:
+        """returns system information as a dictionary"""
+        import platform
+
+        info = {}
+        environ = {}
+        for k,v in os.environ.items():
+            if k in ['CONDA_DEFAULT_ENV', 'NUMBER_OF_PROCESSORS', 'USERNAME', 'CONDA_PREFIX', 'OS']:
+                environ[k] = v
+
+        info['environ'] = environ
+        info['platform'] = [str(val) for val in platform.uname()]
+
+        return info
+
+    def _version_info(self) -> dict:
         """returns version of the third party libraries used"""
-        import ai4water
+
         import SeqMetrics
         import matplotlib
         import sklearn
@@ -1897,6 +1928,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         except (ModuleNotFoundError, ImportError):
             versions['tensorflow'] = None
 
+        versions['sys_info'] = self._sys_info()
         return versions
 
     def config(self) -> dict:
@@ -2003,6 +2035,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         Returns
         -------
+        OptimizePipeline
             an instance of OptimizePipeline class
         """
         return cls(**config['init_paras'])
@@ -2231,10 +2264,10 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
     def _build_and_eval_from_scratch(
             self,
-            model,
+            model: Union[str, dict],
             train_data,
-            x_transformation,
-            y_transformation,
+            x_transformation: Union[str, dict],
+            y_transformation: Union[str, dict],
             prefix:str,
             model_name=None,
             verbosity:int = 1,
@@ -2273,7 +2306,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
     def _populate_results(
             self,
-            model,
+            model: Model,
             train_data,
             test_data,
             model_name=None
@@ -2609,7 +2642,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
     def _eval_model_manually(
             self,
-            model,
+            model: Model,
             metric: str,
             eval_metrics=False) -> float:
         """evaluates the model"""
@@ -2644,14 +2677,17 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         # val_score can be None/nan/inf
         if not math.isfinite(val_score):
-            val_score = 1.0
+            _metric_type = METRIC_TYPES[self.eval_metric]
+            func = compare_func1(_metric_type)
+            best_so_far = func(self.val_scores_)
+            val_score = fill_val(_metric_type, best_so_far)
 
         if eval_metrics:
             # calculate all additional performance metrics which are being monitored
 
             for _metric in self.monitor:
                 pm = getattr(errors, _metric)(**METRICS_KWARGS.get(_metric, {}))
-                #v[self.parent_iter_] = pm
+
                 self.metrics_.at[self.parent_iter_, _metric] = pm
 
                 func = compare_func1(METRIC_TYPES[_metric])
@@ -2750,3 +2786,23 @@ class ModelNotUsedError(Exception):
 
     def __str__(self):
         return f"""model {self.model} is not used during optimization"""
+
+
+def compare_func(metric_type:str):
+    if metric_type == "min":
+        return np.less_equal
+    return np.greater_equal
+
+
+def compare_func1(metric_type:str):
+    if metric_type == "min":
+        return np.nanmin
+    return np.nanmax
+
+
+def fill_val(metric_type:str, best_so_far):
+    if math.isfinite(best_so_far):
+        return best_so_far
+    if metric_type == "min":
+        return 99999999999999
+    return -9999999999

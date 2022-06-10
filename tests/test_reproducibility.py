@@ -48,7 +48,7 @@ class TestMLRegression(unittest.TestCase):
 
         pipeline = pl.get_best_pipeline_by_metric(metric_name='r2_score')
 
-        model = pl._build_model(model=pipeline['model'],
+        model = pl.build_model(model=pipeline['model'],
                                 x_transformation=pipeline['x_transformation'],
                                 y_transformation=pipeline['y_transformation'],
                                 val_metric='r2_score',
