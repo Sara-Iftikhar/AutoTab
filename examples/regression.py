@@ -43,6 +43,16 @@ pl = OptimizePipeline(
     split_random=True,
 )
 
+#%%
+
+pl._version_info()
+
+#%%
+
+pl.change_transformation_behavior('yeo-johnson', {'pre_center': True})
+
+#%%
+
 results = pl.fit(data=data, process_results=False)
 
 ##############################################

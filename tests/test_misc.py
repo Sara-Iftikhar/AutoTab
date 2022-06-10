@@ -15,6 +15,7 @@ train_x, train_y = ds.training_data()
 val_x, val_y = ds.validation_data()
 test_x, test_y = ds.test_data()
 
+
 class TestMisc(unittest.TestCase):
 
     show = False
