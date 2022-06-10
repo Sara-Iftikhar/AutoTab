@@ -119,5 +119,13 @@ class TestMisc(unittest.TestCase):
 
         return
 
+    def test_remove_transformation(self):
+        pl = build_basic()
+        pl.remove_transformation('box-cox')
+        pl.remove_transformation(['yeo-johnson', 'log'])
+        pl.remove_transformation('log2', 'tide_cm')
+        pl.remove_transformation('log10', ['tide_cm', 'wat_temp_c'])
+        return
+
 if __name__ == "__main__":
     unittest.main()

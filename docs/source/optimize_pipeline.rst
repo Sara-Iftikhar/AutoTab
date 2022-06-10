@@ -17,6 +17,7 @@ OptimizePipeline
         change_child_iteration,
         change_lr_space,
         change_batch_size_space,
+        remove_transformation,
         change_transformation_behavior,
         add_dl_model,
         fit,

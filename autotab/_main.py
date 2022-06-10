@@ -550,7 +550,7 @@ class OptimizePipeline(PipelineMixin):
 
         Parameters
         ---------
-            space
+            space : dict
                 a dictionary whose keys are names of models and values are parameter
                 space for that model.
         Returns
@@ -636,8 +636,51 @@ class OptimizePipeline(PipelineMixin):
 
         return
 
-    def remove_transformation(self, transformation, feature):
-        raise NotImplementedError
+    def remove_transformation(
+            self,
+            transformation:Union[str, list],
+            feature:Union[str, list] = None
+    )->None:
+        """
+
+        Parameters
+        ----------
+            transformation : str/list
+                the name/names of transformation to be removed.
+            feature : str/list, optional (default=None)
+                name of feature for which the transformation should not be considered.
+                If not given, the transformation will be removed from all the input features.
+
+        Returns
+        -------
+        None
+
+        Examples
+        --------
+            >>> pl = OptimizePipeline(...)
+            >>> pl.remove_transformation('box-cox')
+            >>> pl.remove_transformation(['yeo-johnson', 'log'])
+            ...
+            >>> pl.remove_transformation('log2', 'tide_cm')
+            >>> pl.remove_transformation('log10', ['tide_cm', 'wat_temp_c'])
+        """
+        if isinstance(transformation, str):
+            transformation = [transformation]
+
+        if feature is None:
+            feature = self.input_features
+        elif isinstance(feature, str):
+            feature = [feature]
+
+        assert isinstance(transformation, list)
+        assert isinstance(feature, list)
+
+        for trans in transformation:
+            for feat in feature:
+                feat_trans = self.feature_transformations[feat].copy()
+                feat_trans.pop(trans)
+                self.feature_transformations[feat] = feat_trans
+        return
 
     def remove_model(self, models: Union[str, list]) -> None:
         """
