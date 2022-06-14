@@ -218,7 +218,7 @@ will be used for preprocessing steps.
 do not optimize transformations for input data
 ==============================================
 If you dont want to optimize transformations for input data,
-keep `inputs_to_transform` argument equal to None or an empty list.
+keep `inputs_to_transform` argument equal to empty list (**not None**).
 In this way transformations will not be optimized for input data.
 
 .. code-block:: python
@@ -300,7 +300,7 @@ from previous runs.
 
 What versions of underlying libraries does this package depends on
 ==================================================================
-Currently `AutoTab` is strongly coupled with a ML python framework
+Currently ``AutoTab`` is strongly coupled with the machine learning framework
 `AI4Water`, whose version should be 1.2 or greater. Another dependency
 is `h5py` which does not have any specific version requirement.
 

@@ -256,7 +256,9 @@ class OptimizePipeline(PipelineMixin):
                 want to apply a single transformation on a group of input features,
                 then pass this as a dictionary. This is helpful if the input data
                 consists of hundred or thousands of input features. If None (default)
-                transformations will be applied on all input features.
+                transformations will be applied on all input features. If you don't
+                want to apply any transformation on any input feature, pass an empty
+                list.
             input_transformations : list, dict
                 The transformations to be considered for input features. Default
                 is None, in which case all input features are considered.
@@ -362,7 +364,9 @@ class OptimizePipeline(PipelineMixin):
         .. [7] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.TFT
 
         """
-        if not inputs_to_transform:
+
+        # None means all inputs are to be considered.
+        if inputs_to_transform is None:
             inputs_to_transform = input_features
 
         if isinstance(inputs_to_transform, dict):

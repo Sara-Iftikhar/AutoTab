@@ -71,23 +71,23 @@ class TestMisc(unittest.TestCase):
         return
 
     def test_zero_child_iter(self):
-        pl = run_basic(parent_iterations=4,
+        pl = build_basic(parent_iterations=4,
                        child_iterations=0,
                        parent_algorithm="random",
                        process_results=False)
-        assert pl.child_iter_ == pl.child_iterations
-        assert pl.child_val_scores_.size == 0
+        for v in pl._child_iters.values():
+            assert v == 0
 
         return
 
     def test_zero_child_iter_xy(self):
-        pl = run_basic(parent_iterations=4,
+        pl = build_basic(parent_iterations=4,
                        child_iterations=0,
                        parent_algorithm="random",
                        process_results=False
                        )
-        assert pl.child_iter_ == pl.child_iterations
-        assert pl.child_val_scores_.size == 0
+        for v in pl._child_iters.values():
+            assert v == 0
         return
 
     def test_grouped_transformations(self):
@@ -125,6 +125,13 @@ class TestMisc(unittest.TestCase):
         pl.remove_transformation(['yeo-johnson', 'log'])
         pl.remove_transformation('log2', 'tide_cm')
         pl.remove_transformation('log10', ['tide_cm', 'wat_temp_c'])
+        return
+
+    def test_no_transformation_on_inputs(self):
+        """do not apply any transformation on input features"""
+        pl = build_basic(inputs_to_transform=[])
+        space = pl.space()
+        assert len(space) == 1
         return
 
 if __name__ == "__main__":
