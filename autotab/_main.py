@@ -641,7 +641,7 @@ class OptimizePipeline(PipelineMixin):
             transformation:Union[str, list],
             feature:Union[str, list] = None
     )->None:
-        """
+        """Remove the one or more transformation from being considered.
 
         Parameters
         ----------
@@ -659,9 +659,11 @@ class OptimizePipeline(PipelineMixin):
         --------
             >>> pl = OptimizePipeline(...)
             >>> pl.remove_transformation('box-cox')
+            ... # remove multiple transformations
             >>> pl.remove_transformation(['yeo-johnson', 'log'])
-            ...
+            ... # remove a transformation for a certain feature
             >>> pl.remove_transformation('log2', 'tide_cm')
+            ... # remove a transformation for more than one features
             >>> pl.remove_transformation('log10', ['tide_cm', 'wat_temp_c'])
         """
         if isinstance(transformation, str):
@@ -1586,6 +1588,8 @@ class OptimizePipeline(PipelineMixin):
             test_data = None,
             metric_name: str = None,
             fit_on_all_train_data:bool = True,
+            lower_limit: Union[int, float] = -1.0,
+            upper_limit: Union[int, float] = None,
             figsize: tuple = None,
             show: bool = True,
             save: bool = True
@@ -1619,6 +1623,10 @@ class OptimizePipeline(PipelineMixin):
                 are training the model on all available training data
                 which is (training + validation) data. If False, then
                 model is trained only on training data.
+            lower_limit : float/int, optional (default=-1.0)
+                clip the values below this value. Set this value to None to avoid clipping.
+            upper_limit : float/int, optional (default=None)
+                clip the values above this value
             figsize: tuple
                 If given, plot will be generated of this size.
             show : bool
@@ -1672,7 +1680,14 @@ class OptimizePipeline(PipelineMixin):
 
         df.to_csv(os.path.join(self.path, f"dumbell_{metric_name}_data.csv"))
 
-        baseline = np.where(df['baseline']<-1.0, -1.0, df['baseline'])
+        baseline = df['baseline'].values
+
+        if lower_limit:
+            baseline = np.where(baseline < lower_limit, lower_limit, baseline)
+
+        if upper_limit:
+            baseline = np.where(baseline > upper_limit, upper_limit, baseline)
+
         fig, ax = plt.subplots(figsize=figsize)
         ax = dumbbell_plot(baseline,
                            df['optimized'],

@@ -298,8 +298,8 @@ from previous runs.
     >>> fpath = "path/to/previous/iterations.json"
     >>> results = pl.fit(data=data, previous_results=fpath)
 
-What versions of underlying libraries do this package depends
-=============================================================
+What versions of underlying libraries does this package depends on
+==================================================================
 Currently `AutoTab` is strongly coupled with a ML python framework
 `AI4Water`, whose version should be 1.2 or greater. Another dependency
 is `h5py` which does not have any specific version requirement.
