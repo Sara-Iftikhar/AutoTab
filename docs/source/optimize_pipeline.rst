@@ -39,7 +39,7 @@ OptimizePipeline
         config,
         from_config,
         from_config_file,
-        evaluate_model
+        evaluate_model,
         cleanup,
 
    :undoc-members:

@@ -675,6 +675,9 @@ class OptimizePipeline(PipelineMixin):
 
         if feature is None:
             feature = self.input_features
+            # so that space does not have the transformation/s in it
+            for trans in transformation:
+                DEFAULT_TRANSFORMATIONS.remove(trans)
         elif isinstance(feature, str):
             feature = [feature]
 
@@ -843,6 +846,8 @@ class OptimizePipeline(PipelineMixin):
                 when it is initialized.
             features : str/list, optional (default=None)
                 The name or names of features for which the behavior should be modified.
+                If not given, the changed behavior of transformation will apply to all
+                input features.
 
         Returns
         -------

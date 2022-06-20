@@ -211,6 +211,8 @@ For multi-class classification with neural networks, we must set
     ...     )
     >>> pl.fit(data=data)
 
-Check `ClassificationMetrics <https://seqmetrics.readthedocs.io/en/latest/cls.html#classificationmetrics>_`  class of
-`SeqMetrics <https://seqmetrics.readthedocs.io/en/latest/index.html>_` library for the name of metrics
-which can be used for monitoring
+Check `ClassificationMetrics [1]_  class of SeqMetrics [2]_ library for the name
+of metrics which can be used for monitoring
+
+.. [1] `<https://seqmetrics.readthedocs.io/en/latest/cls.html#classificationmetrics>_`
+.. [2] `<https://seqmetrics.readthedocs.io/en/latest/index.html>_`
