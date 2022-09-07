@@ -137,10 +137,10 @@ setting values for ``batch_size`` and ``lr``.
 deep learning models (classification)
 =====================================
 
-This covers ``MLP``, ``LSTM``, ``CNN``, ``CNNLSTM``, ``TFT, ``TCN``, ``LSTMAutoEncoder``
-for classification problem. Each model can consist of stacks of layers.
-For example MLP can consist of stacks of Dense layers. The number of layers
-are also optimized.
+This covers ``MLP`` [3]_, ``LSTM`` [5]_, ``CNN`` [4]_, ``CNNLSTM`` [6]_, ``TFT`` [9]_,
+``TCN`` [8]_, ``LSTMAutoEncoder`` [7]_ for classification problem. Each model
+can consist of stacks of layers. For example MLP can consist of stacks of
+Dense [10]_ layers. The number of layers are also optimized.
 
 .. code-block:: python
 
@@ -211,8 +211,16 @@ For multi-class classification with neural networks, we must set
     ...     )
     >>> pl.fit(data=data)
 
-Check `ClassificationMetrics [1]_  class of SeqMetrics [2]_ library for the name
+Check ``ClassificationMetrics`` [1]_  class of SeqMetrics [2]_ library for the name
 of metrics which can be used for monitoring
 
 .. [1] `<https://seqmetrics.readthedocs.io/en/latest/cls.html#classificationmetrics>_`
 .. [2] `<https://seqmetrics.readthedocs.io/en/latest/index.html>_`
+.. [3] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.MLP
+.. [4] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.CNN
+.. [5] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.LSTM
+.. [6] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.CNNLSTM
+.. [7] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.LSTMAutoEncoder
+.. [8] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.TCN
+.. [9] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.TFT
+.. [10] https://www.tensorflow.org/api_docs/python/tf/keras/layers/Dense

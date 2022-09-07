@@ -3,6 +3,43 @@ import numpy as np
 from skopt.callbacks import EarlyStopper
 
 
+class Callbacks(object):
+    """callbacks to be executed."""
+
+    def on_build_begin(self, model, **model_kwargs)->None:
+        """called before ``build`` method of parent loop"""
+        return
+
+    def on_build_end(self, model, **model_kwargs)->None:
+        """called at the end ``build`` method of parent loop"""
+        return
+
+    def on_fit_begin(self, x=None, y=None, validation_data=None)->None:
+        """called before ``fit`` method of parent loop. This callback does not run
+        when cross validation is used. For that consider using ``on_cross_val_begin``."""
+        return
+
+    def on_fit_end(self, x=None, y=None, validation_data=None)->None:
+        """called at the end ``fit`` method of parent loop.  This callback does not run
+        when cross validation is used. For that consider using ``on_cross_val_end``."""
+
+    def on_eval_begin(self, x=None, y=None, validation_data=None)->None:
+        """called before ``evaluate`` method of parent loop"""
+        return
+
+    def on_eval_end(self, x=None, y=None, validation_data=None)->None:
+        """called at the end ``evaluate`` method of parent loop"""
+        return
+
+    def on_cross_val_begin(self, x=None, y=None, validation_data=None)->None:
+        """called at the start of cross validation."""
+        return
+
+    def on_cross_val_end(self, x=None, y=None, validation_data=None)->None:
+        """called at the end of cross validation."""
+        return
+
+
 class DeltaYStopper(EarlyStopper):
 
     def __init__(self, min_val_loss, patience):

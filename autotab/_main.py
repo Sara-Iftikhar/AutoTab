@@ -11,6 +11,7 @@ import inspect
 from typing import Union
 from typing import Tuple
 from typing import Callable
+from typing import List
 from collections import OrderedDict
 from collections import defaultdict
 
@@ -50,6 +51,8 @@ from ai4water.hyperopt import Real
 from ai4water.hyperopt import Integer
 from ai4water.hyperopt import HyperOpt
 from ai4water.hyperopt import Categorical
+
+from .utils import Callbacks
 
 assert ai4water.__version__ >= "1.04"
 
@@ -949,6 +952,9 @@ class OptimizePipeline(PipelineMixin):
         self._save_config()  # will also make path if it does not already exists
 
         self._print_header()
+
+        self.callbacks_ = None
+
         return
 
     def _print_header(self):
@@ -970,6 +976,7 @@ class OptimizePipeline(PipelineMixin):
             validation_data:Tuple[np.ndarray, np.ndarray] = None,
             previous_results:dict = None,
             process_results:bool = True,
+            callbacks:List[Callbacks] = None
     ) -> "ai4water.hyperopt.HyperOpt":
         """
         Optimizes the pipeline for the given data.
@@ -991,6 +998,8 @@ class OptimizePipeline(PipelineMixin):
                 path of file which contains xy values.
             process_results : bool, optional (default=True)
                 Wether to perform postprocessing of optimization of results or not.
+            callbacks : list, optional (default=None)
+                list of callbacks to run
 
         Returns
         --------
@@ -1014,6 +1023,20 @@ class OptimizePipeline(PipelineMixin):
 
         if previous_results is not None:
             parent_opt.add_previous_results(previous_results)
+
+        if callbacks is None:
+            callbacks = [Callbacks()]
+
+        if not isinstance(callbacks, list):
+            callbacks = [callbacks]
+
+        assert isinstance(callbacks, list), f"callbacks of type {type(callbacks)} not allowed"
+
+        for cbk in callbacks:
+            assert isinstance(cbk, Callbacks), f"""
+            Each callback must be an instance of Callback class but you provided a callback of type {type(cbk)}"""
+
+        setattr(self, 'callbacks_', callbacks)
 
         res = parent_opt.fit()
 
@@ -1244,6 +1267,10 @@ class OptimizePipeline(PipelineMixin):
         .. Model:
             https://ai4water.readthedocs.io/en/master/model.html#ai4water._main.BaseModel
         """
+
+        for cbk in self.callbacks_:
+            getattr(cbk, 'on_build_begin')(model, **self.model_kwargs)
+
         model = Model(
             model=model,
             verbosity=verbosity,
@@ -1256,6 +1283,10 @@ class OptimizePipeline(PipelineMixin):
             lr=float(lr),
             **self.model_kwargs
         )
+
+        for cbk in self.callbacks_:
+            getattr(cbk, 'on_build_end')(model, **self.model_kwargs)
+
         return model
 
     def build_model_from_config(
@@ -1289,6 +1320,9 @@ class OptimizePipeline(PipelineMixin):
         This method also populates on entry/row in `:py:attribute:metrics_` dataframe.
         """
         if cross_validate:
+            for cbk in self.callbacks_:
+                getattr(cbk, 'on_cross_val_begin')(validation_data=self.val_data_, **self.data_)
+
             # val_score will be obtained by performing cross validation
             if self.val_data_:  # keyword data
                 val_scores = model.cross_val_score(
@@ -1301,6 +1335,9 @@ class OptimizePipeline(PipelineMixin):
                     scoring=[self.eval_metric] + self.monitor,
                     refit=False,
                     **self.data_)
+
+            for cbk in self.callbacks_:
+                getattr(cbk, 'on_cross_val_end')(validation_data=self.val_data_, **self.data_)
 
             val_score = val_scores.pop(0)
 
@@ -1318,8 +1355,15 @@ class OptimizePipeline(PipelineMixin):
 
                     self.metrics_best_.at[self.parent_iter_, k] = pm_val
         else:
+            # for cbk in self.callbacks_:
+            #     getattr(cbk, 'on_fit_begin')(**self.data_)
+
             # train the model and evaluate it to calculate val_score
             model.fit(**self.data_)
+
+            # for cbk in self.callbacks_:
+            #     getattr(cbk, 'on_fit_end')(**self.data_)
+
             val_score = self._eval_model_manually(
                 model,
                 #data,
@@ -2693,7 +2737,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         else:
             ax = bar_chart(list(models.values()),
                            labels,
-                           xlabel=metric_name,
+                           ax_kws={'xlabel': metric_name},
                            sort=True,
                            show=False,
                            **kwargs)
@@ -2711,13 +2755,17 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             self,
             model: Model,
             metric: str,
-            eval_metrics=False) -> float:
+            eval_metrics=False
+    ) -> float:
         """evaluates the model"""
         # make prediction on validation data
         if self.val_data_:
             t, p = model.predict(**self.val_data_, return_true=True, process_results=False)
         else:
             t, p = model.predict_on_validation_data(**self.data_, return_true=True, process_results=False)
+
+        for cbk in self.callbacks_:
+            getattr(cbk, 'on_eval_begin')(x=None, y=None, **self.val_data_)
 
         if len(p) == p.size:
             p = p.reshape(-1, 1)  # TODO, for cls, Metrics do not accept (n,) array
@@ -2766,6 +2814,9 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                 if func(pm, best_so_far):
 
                     self.metrics_best_.at[self.parent_iter_, _metric] = pm
+
+        for cbk in self.callbacks_:
+            getattr(cbk, 'on_eval_end')(x=None, y=None, **self.val_data_)
 
         return val_score
 

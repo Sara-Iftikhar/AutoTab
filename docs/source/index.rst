@@ -12,6 +12,7 @@
    :caption: API:
 
    optimize_pipeline
+   utils
    auto_examples/index
 
 
