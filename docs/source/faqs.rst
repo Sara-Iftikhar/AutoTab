@@ -301,8 +301,10 @@ from previous runs.
 What versions of underlying libraries does this package depends on
 ==================================================================
 Currently ``AutoTab`` is strongly coupled with the machine learning framework
-`AI4Water`, whose version should be 1.2 or greater. Another dependency
-is `h5py` which does not have any specific version requirement.
+`AI4Water`, whose version should be 1.6 or greater. Another optional dependency
+is `h5py` which does not have any specific version requirement. It
+is used for data storage. If it is not available, then data is stored in csv file
+format.
 
 how to use cross validation during pipeline optimization
 ========================================================

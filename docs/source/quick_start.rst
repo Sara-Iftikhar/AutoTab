@@ -7,7 +7,7 @@ models.
 Optimize pipeline for machine learning models (regression)
 ==========================================================
 
-This covers all scikit-learng models, catboost, lightgbm and xgboost
+This covers all scikit-learn models, catboost, lightgbm and xgboost
 
 .. code-block:: python
 
@@ -51,7 +51,7 @@ This covers all scikit-learng models, catboost, lightgbm and xgboost
 machine learning models (classification)
 ==============================================================
 
-This covers all scikit-learng models, catboost, lightgbm and xgboost
+This covers all scikit-learn models, catboost, lightgbm and xgboost
 
 .. code-block:: python
 
