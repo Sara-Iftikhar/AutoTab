@@ -1,5 +1,8 @@
 
+__all__ = ["Callbacks", "data_to_csv", "data_to_h5"]
+
 import numpy as np
+import pandas as pd
 from skopt.callbacks import EarlyStopper
 
 
@@ -23,19 +26,19 @@ class Callbacks(object):
         """called at the end ``fit`` method of parent loop.  This callback does not run
         when cross validation is used. For that consider using ``on_cross_val_end``."""
 
-    def on_eval_begin(self, x=None, y=None, validation_data=None)->None:
+    def on_eval_begin(self, iter_num=None, x=None, y=None, validation_data=None)->None:
         """called before ``evaluate`` method of parent loop"""
         return
 
-    def on_eval_end(self, x=None, y=None, validation_data=None)->None:
+    def on_eval_end(self, iter_num=None, x=None, y=None, validation_data=None)->None:
         """called at the end ``evaluate`` method of parent loop"""
         return
 
-    def on_cross_val_begin(self, x=None, y=None, validation_data=None)->None:
+    def on_cross_val_begin(self, iter_num=None, x=None, y=None, validation_data=None)->None:
         """called at the start of cross validation."""
         return
 
-    def on_cross_val_end(self, x=None, y=None, validation_data=None)->None:
+    def on_cross_val_end(self, iter_num=None, x=None, y=None, validation_data=None)->None:
         """called at the end of cross validation."""
         return
 
@@ -65,6 +68,7 @@ class DeltaYStopper(EarlyStopper):
 
         return False
 
+
 class EarlyStopperMinImp(EarlyStopper):
     """Stops optimization of objective function does not shows improvement
     after first `patience` iterations. """
@@ -81,3 +85,47 @@ class EarlyStopperMinImp(EarlyStopper):
 
         return None
 
+
+def data_to_h5(filepath, x, y, val_x, val_y, test_x, test_y):
+    import h5py
+
+    f = h5py.File(filepath, mode='w')
+
+    _save_data_to_hdf5('training_data', x, y, f)
+
+    _save_data_to_hdf5('validation_data', val_x, val_y, f)
+
+    _save_data_to_hdf5('test_data', test_x, test_y, f)
+
+    f.close()
+    return
+
+
+def _save_data_to_hdf5(data_type, x, y, f):
+    """Saves one data_type in h5py. data_type is string indicating whether
+    it is training, validation or test data."""
+
+
+
+    assert x is not None
+    group_name = f.create_group(data_type)
+
+    for name, val in zip(['x', 'y'], [x, y]):
+
+        param_dset = group_name.create_dataset(name, val.shape, dtype=val.dtype)
+        if not val.shape:
+            # scalar
+            param_dset[()] = val
+        else:
+            param_dset[:] = val
+    return
+
+
+def data_to_csv(filepath: str,
+                all_features: list,
+                x, y):
+    if x is None:
+        pd.DataFrame().to_csv(filepath)
+    else:
+        pd.DataFrame(np.concatenate([x, y], axis=1), columns=all_features).to_csv(filepath)
+    return

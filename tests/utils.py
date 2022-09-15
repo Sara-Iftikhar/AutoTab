@@ -10,15 +10,14 @@ inputs = ['tide_cm', 'wat_temp_c', 'sal_psu',
 rgr_data = busan_beach(inputs=inputs)
 
 
-def build_basic(parent_algorithm="random",
-                child_algorithm="random",
-                parent_iterations=4,
-                child_iterations=4,
-                eval_metric="mse",
-                models = None,
-                train_fraction=0.7,
-                **kwargs
-              ):
+def make_kws(parent_algorithm="random",
+             child_algorithm="random",
+             parent_iterations=4,
+             child_iterations=4,
+             eval_metric="mse",
+             models = None,
+             train_fraction=0.7,
+             **kwargs):
 
     input_features = rgr_data.columns.tolist()[0:-1]
     if 'input_features' in kwargs:
@@ -37,27 +36,34 @@ def build_basic(parent_algorithm="random",
     else:
         monitor = ['r2', 'nse']
 
-    pl = OptimizePipeline(
-        inputs_to_transform=inputs_to_transform,
-        parent_iterations=parent_iterations,
-        child_iterations=child_iterations,
-        parent_algorithm=parent_algorithm,
-        child_algorithm=child_algorithm,
-        eval_metric=eval_metric,
-        monitor=monitor,
-        models=models or [
+    kws = {
+        'inputs_to_transform': inputs_to_transform,
+        'parent_iterations': parent_iterations,
+        'child_iterations': child_iterations,
+        'parent_algorithm': parent_algorithm,
+        'child_algorithm': child_algorithm,
+        'eval_metric': eval_metric,
+        'monitor': monitor,
+        'models': models or [
             "LinearRegression",
             "LassoLars",
             "Lasso",
             "RandomForestRegressor"
         ],
-        input_features=input_features,
-        output_features=output_features,
-        split_random=True,
-        train_fraction=train_fraction,
+        'input_features': input_features,
+        'output_features': output_features,
+        'split_random': True,
+        'train_fraction': train_fraction,
+    }
+    return kws
+
+def build_basic(**kwargs):
+
+    kwargs.update(make_kws(**kwargs))
+
+    pl = OptimizePipeline(
         **kwargs
     )
-
 
     return pl
 

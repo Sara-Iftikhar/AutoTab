@@ -6,9 +6,10 @@ import os
 import unittest
 
 from autotab import OptimizePipeline
+from autotab.utils import Callbacks
 from ai4water.preprocessing import DataSet
 
-from utils import run_basic, build_basic, rgr_data
+from utils import run_basic, build_basic, rgr_data, make_kws
 
 ds = DataSet(rgr_data, verbosity=0)
 train_x, train_y = ds.training_data()
@@ -133,6 +134,23 @@ class TestMisc(unittest.TestCase):
         space = pl.space()
         assert len(space) == 1
         return
+
+    def test_contex_manager_no_model(self):
+
+        class MyCallbacks(Callbacks):
+            def on_eval_begin(self, iter_num=None, x=None, y=None, validation_data=None) ->None:
+                print("raising Value Error")
+                raise ValueError
+        kws = make_kws()
+
+        def call():
+            with OptimizePipeline(**kws) as pl:
+                pl.fit(data = rgr_data, callbacks=MyCallbacks())
+
+        self.assertRaises(ValueError, call)
+
+        return
+
 
 if __name__ == "__main__":
     unittest.main()

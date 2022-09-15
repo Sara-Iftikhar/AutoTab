@@ -2,7 +2,7 @@
 import os
 import unittest
 import site
-import warnings
+
 
 package_path = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))) 
 site.addsitedir(package_path)
@@ -44,7 +44,7 @@ class TestMLRegression(unittest.TestCase):
         
         pl.fit(data=data)
 
-        best_val = float(list(pl.optimizer_.best_xy().keys())[0].split('_')[0])
+        best_val = pl.optimizer_.best_xy()['y']
 
         pipeline = pl.get_best_pipeline_by_metric(metric_name='r2_score')
 
