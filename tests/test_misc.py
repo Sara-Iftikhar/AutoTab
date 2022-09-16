@@ -123,9 +123,30 @@ class TestMisc(unittest.TestCase):
     def test_remove_transformation(self):
         pl = build_basic()
         pl.remove_transformation('box-cox')
+        for sp in pl.space():
+            assert 'box-cox' not in sp.categories
+
         pl.remove_transformation(['yeo-johnson', 'log'])
+        for sp in pl.space():
+            assert 'yeo-johnson' not in sp.categories
+            assert 'log' not in sp.categories
+
         pl.remove_transformation('log2', 'tide_cm')
+        for sp in pl.space():
+            if sp.name not in ["model"]:
+                if sp.name == "tide_cm":
+                    assert 'log2' not in sp.categories
+                else:
+                    assert 'log2' in sp.categories
+
         pl.remove_transformation('log10', ['tide_cm', 'wat_temp_c'])
+
+        for sp in pl.space():
+            if sp.name not in ['model']:
+                if sp.name in ['tide_cm', 'wat_temp_c']:
+                    assert 'log10' not in sp.categories
+                else:
+                    assert 'log10' in sp.categories
         return
 
     def test_no_transformation_on_inputs(self):
@@ -149,6 +170,15 @@ class TestMisc(unittest.TestCase):
 
         self.assertRaises(ValueError, call)
 
+        return
+
+    def test_save_results_without_fit(self):
+
+        pl = build_basic()
+
+        pl.save_results()
+        pl.report()
+        pl._save_config()
         return
 
 

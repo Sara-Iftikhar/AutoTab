@@ -504,6 +504,9 @@ class OptimizePipeline(PipelineMixin):
             self.batch_space = [Categorical([8, 16, 32, 64], name="batch_size")]
             self.lr_space = [Real(1e-5, 0.05, num_samples=10, name="lr")]
 
+        # information about transformations which are
+        self._tr_modifications = {}
+
     def __enter__(self):
         return self
 
@@ -729,11 +732,19 @@ class OptimizePipeline(PipelineMixin):
         assert isinstance(transformation, list)
         assert isinstance(feature, list)
 
+        # removing the transformations from feature_transformations
         for trans in transformation:
             for feat in feature:
                 feat_trans = self.feature_transformations[feat].copy()
                 feat_trans.pop(trans)
                 self.feature_transformations[feat] = feat_trans
+
+        # we need to remove these modifications from space as well
+        # so that they are not suggested by the algorithm
+        for feat in feature:
+            tr_for_feat = self.feature_transformations[feat]
+            self._tr_modifications[feat] = list(tr_for_feat.keys())
+
         return
 
     def remove_model(self, models: Union[str, list]) -> None:
@@ -753,6 +764,7 @@ class OptimizePipeline(PipelineMixin):
         Example
         -------
             >>> pl = OptimizePipeline(...)
+            ... # If we don't want 'ExtraTreeRegressor' to be considered
             >>> pl.remove_model("ExtraTreeRegressor")
         """
         if isinstance(models, str):
@@ -834,6 +846,8 @@ class OptimizePipeline(PipelineMixin):
                         transformations must be one of {DEFAULT_TRANSFORMATIONS}"""
                     append[out_feature] = y_transformations
                 y_categories = list(self.output_transformations.values())
+
+        append.update(self._tr_modifications)
 
         sp = make_space(self.inputs_to_transform + (self.outputs_to_transform or []),
                         categories=list(set(x_categories + y_categories)),
