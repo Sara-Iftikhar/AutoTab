@@ -40,7 +40,6 @@ from ai4water.models import LSTMAutoEncoder
 from ai4water.utils.utils import jsonize
 from ai4water._optimize import make_space
 from ai4water.utils.utils import find_best_weight
-from ai4water.hyperopt.utils import to_skopt_space
 from ai4water.utils.utils import dateandtime_now
 from ai4water.utils.utils import make_model
 from ai4water.preprocessing import DataSet
@@ -53,10 +52,15 @@ from ai4water.hyperopt import Real
 from ai4water.hyperopt import Integer
 from ai4water.hyperopt import HyperOpt
 from ai4water.hyperopt import Categorical
+from ai4water.hyperopt.utils import to_skopt_space
 
 from .utils import Callbacks, data_to_h5, data_to_csv
 
-assert ai4water.__version__ >= "1.06"
+assert ai4water.__version__ >= "1.06", f"""
+    Your current ai4water version is {ai4water.__version__}.
+    Please upgrade your ai4water version to at least 1.06 using
+    'pip install --upgrade ai4water'
+    """
 
 
 # TODO's
@@ -296,7 +300,7 @@ class OptimizePipeline(PipelineMixin):
             outputs_to_transform : list, optional
                 Output features on which feature engineering/transformation is to
                 be applied. If None, then transformations on outputs are not applied.
-            output_transformations :
+            output_transformations : Optional (default=None)
                 The transformations to be considered for outputs/targets. The user
                 can consider any transformation as given for ``input_transformations``
             models : list, optional
@@ -509,6 +513,9 @@ class OptimizePipeline(PipelineMixin):
         must be saved.
 
         """
+        self.exc_type_ = exc_type
+        self.exc_val_ = exc_val
+
         self.save_results()
 
         self.report()
@@ -577,6 +584,8 @@ class OptimizePipeline(PipelineMixin):
         raise NotImplementedError
 
     def _save_config(self):
+        if not hasattr(self, 'path'):
+            return
         cpath = os.path.join(self.path, "config.json")
         config = self.config()
         with open(cpath, 'w') as fp:
@@ -679,7 +688,8 @@ class OptimizePipeline(PipelineMixin):
             transformation:Union[str, list],
             feature:Union[str, list] = None
     )->None:
-        """Remove the one or more transformation from being considered.
+        """Removes one or more transformation from being considered. This function
+        modifies the ``feature_transformations`` attribute of the class.
 
         Parameters
         ----------
@@ -696,6 +706,7 @@ class OptimizePipeline(PipelineMixin):
         Examples
         --------
             >>> pl = OptimizePipeline(...)
+            ... # remove box-cox transformation altogether
             >>> pl.remove_transformation('box-cox')
             ... # remove multiple transformations
             >>> pl.remove_transformation(['yeo-johnson', 'log'])
@@ -867,8 +878,8 @@ class OptimizePipeline(PipelineMixin):
     )->None:
         """change the behvior of a transformation i.e. the way it is applied.
         If ``features`` is not not given, it will modify the behavior of transformation
-        for all features. This function modified the ``feature_transformations``
-        class attribute.
+        for all features. This function modifies the ``feature_transformations``
+        attribute of the class.
 
         Parameters
         ----------
@@ -900,7 +911,7 @@ class OptimizePipeline(PipelineMixin):
         ...                    output_features=output_features
         ...                     )
         >>> pl.change_transformation_behavior('yeo-johnson', {'pre_center': True}, 'wind_dir_deg')
-        ... # we can change behavior behavior for multiple feautres as well
+        ... # we can change behavior behavior for multiple features as well
         >>> pl.change_transformation_behavior('yeo-johnson', {'pre_center': True},
         ...                                   ['air_p_hpa',  'mslp_hpa'])
         """
@@ -1390,7 +1401,12 @@ class OptimizePipeline(PipelineMixin):
         )
 
         for cbk in callbacks:
-            getattr(cbk, 'on_cross_val_end')(self.parent_iter_, validation_data=validation_data)
+            getattr(cbk, 'on_cross_val_end')(
+                model=model,
+                iter_num=self.parent_iter_,
+                x=x,
+                y=y,
+                validation_data=validation_data)
 
         val_score = val_scores.pop(0)
 
@@ -2011,44 +2027,51 @@ class OptimizePipeline(PipelineMixin):
         """
         self.end_time_ = time.asctime()
 
+        # results are only available if fit has been run.
+        if hasattr(self, 'parent_iter_'):
+
         # save parent_suggestions
-        parent_suggestions = jsonize(self.parent_suggestions_)
-        with open(os.path.join(self.path, "parent_suggestions.json"), "w") as fp:
-            json.dump(parent_suggestions, fp, sort_keys=True)
+            parent_suggestions = jsonize(self.parent_suggestions_)
+            with open(os.path.join(self.path, "parent_suggestions.json"), "w") as fp:
+                json.dump(parent_suggestions, fp, sort_keys=True)
 
-        # make a 2d array of all erros being monitored.
-        errors = pd.concat([self.metrics_,
-                            pd.DataFrame(self.val_scores_, columns=['val_scores'])],
-                           axis=1)
-        # save the errors being monitored
-        fpath = os.path.join(self.path, "errors.csv")
-        errors.to_csv(fpath, index_label="iterations")
+            # make a 2d array of all errors being monitored.
+            errors = pd.concat([self.metrics_,
+                                pd.DataFrame(self.val_scores_, columns=['val_scores'])],
+                               axis=1)
+            # save the errors being monitored
+            fpath = os.path.join(self.path, "errors.csv")
+            errors.to_csv(fpath, index_label="iterations")
 
-        # save results of child iterations as csv file
-        fpath = os.path.join(self.path, "child_val_scores.csv")
-        pd.DataFrame(
-            self.child_val_scores_,
-            columns=[f'child_iter_{i}' for i in range(self.max_child_iters)]).to_csv(fpath)
+            # save results of child iterations as csv file
+            fpath = os.path.join(self.path, "child_val_scores.csv")
+            pd.DataFrame(
+                self.child_val_scores_,
+                columns=[f'child_iter_{i}' for i in range(self.max_child_iters)]).to_csv(fpath)
 
-        fpath = os.path.join(self.path, 'child_seeds.csv')
-        pd.DataFrame(self.child_seeds_, columns=['child_seeds']).to_csv(fpath, index=False)
+            fpath = os.path.join(self.path, 'child_seeds.csv')
+            pd.DataFrame(self.child_seeds_, columns=['child_seeds']).to_csv(fpath, index=False)
 
-        fpath = os.path.join(self.path, 'parent_seeds.csv')
-        pd.DataFrame(self.parent_seeds_, columns=['parent_seeds']).to_csv(fpath, index=False)
+            fpath = os.path.join(self.path, 'parent_seeds.csv')
+            pd.DataFrame(self.parent_seeds_, columns=['parent_seeds']).to_csv(fpath, index=False)
         return
 
     def metric_report(self, metric_name: str) -> str:
         """report with respect to one performance metric"""
         metric_val_ = self.get_best_metric(metric_name)
-        best_model_name = list(self.get_best_pipeline_by_metric(metric_name)['model'].keys())[0]
 
-        rep = f"""
-    With respect to {metric_name},
-the best model was {best_model_name} which had 
-'{metric_name}' value of {round(metric_val_, 4)}. This model was obtained at 
-{self.get_best_metric_iteration(metric_name)} iteration and is saved at 
-{self.get_best_pipeline_by_metric(metric_name)['path']}
-        """
+        if self.parent_iter_ == 0:
+            rep = 'Stopped at first iteration'
+        else:
+            best_model_name = list(self.get_best_pipeline_by_metric(metric_name)['model'].keys())[0]
+
+            rep = f"""
+        With respect to {metric_name},
+    the best model was {best_model_name} which had 
+    '{metric_name}' value of {round(metric_val_, 4)}. This model was obtained at 
+    {self.get_best_metric_iteration(metric_name)} iteration and is saved at 
+    {self.get_best_pipeline_by_metric(metric_name)['path']}
+            """
         return rep
 
     def report(
@@ -2056,6 +2079,10 @@ the best model was {best_model_name} which had
             write: bool = True
     ) -> str:
         """makes the report and writes it in text form"""
+
+        if not hasattr(self, 'start_time_'):
+            return "no iteration was run"
+
         st_time = self.start_time_
         en_time = getattr(self, "end_time_", time.asctime())
 
@@ -2068,6 +2095,9 @@ completing {self.parent_iter_} iterations. The optimization considered {num_mode
         if self.parent_iter_ < self.parent_iterations:
             text += f"""
 The given parent iterations were {self.parent_iterations} but optimization stopped early"""
+
+        if hasattr(self, 'exc_type_'):
+            text += f"Execution was stopped due to {str(self.exc_type_)} with {str(self.exc_val_)}"
 
         for metric in self.monitor:
             text += self.metric_report(metric)

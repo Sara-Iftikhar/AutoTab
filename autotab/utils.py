@@ -34,11 +34,11 @@ class Callbacks(object):
         """called at the end ``evaluate`` method of parent loop"""
         return
 
-    def on_cross_val_begin(self, iter_num=None, x=None, y=None, validation_data=None)->None:
+    def on_cross_val_begin(self, model, iter_num=None, x=None, y=None, validation_data=None)->None:
         """called at the start of cross validation."""
         return
 
-    def on_cross_val_end(self, iter_num=None, x=None, y=None, validation_data=None)->None:
+    def on_cross_val_end(self, model, iter_num=None, x=None, y=None, validation_data=None)->None:
         """called at the end of cross validation."""
         return
 

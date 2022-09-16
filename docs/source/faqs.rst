@@ -310,10 +310,11 @@ how to use cross validation during pipeline optimization
 ========================================================
 By default the pipeline is evaluated on the validation data according to ``eval_metric``.
 However, you can choose to perform cross validation on child or parent or on both
-iterations. To perform cross validation at parent iterations set ``cv_parent_hpo``
+iterations. To perform cross validation at parent iterations, set ``cv_parent_hpo``
 to ``True``. Similarly to perform cross validation at child iteration, set ``cv_child_hpo``
 to True. You must pass the ``cross_validator`` argument as well to determine
 what kind of cross validation to be performed. Consider the following example
+where cross validation is performed using KFold during parent iterations.
 
 .. code-block:: python
 
@@ -324,7 +325,7 @@ what kind of cross validation to be performed. Consider the following example
     ...           cross_validator={"KFold": {"n_splits": 5}},
     ...    )
 
-Instead of ``KFold``, we also choose ``LeaveOneOut``, or ``ShuffleSplit`` or ``TimeSeriesSplit``.
+Instead of ``KFold``, we can also choose ``LeaveOneOut``, or ``ShuffleSplit`` or ``TimeSeriesSplit``.
 
 
 how to change search space for batch_size and learning rate
