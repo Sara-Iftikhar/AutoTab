@@ -10,6 +10,7 @@ from ai4water.datasets import MtropicsLaos
 
 from autotab import OptimizePipeline
 
+from utils import classification_data
 
 cls_data = MtropicsLaos().make_classification(lookback_steps=1,)
 inputs_cls = cls_data.columns.tolist()[0:-1]
@@ -50,6 +51,40 @@ class TestBinaryCls(unittest.TestCase):
         pl.cleanup()
 
         return
+
+    def test_multiclass(self):
+        multi_cls_data = classification_data(4)
+        multi_cls_input_features = multi_cls_data.columns.tolist()[0:-1]
+        multi_cls_output_features = multi_cls_data.columns.tolist()[-1:]
+
+        kws = {
+            'inputs_to_transform':multi_cls_input_features,
+            'input_features':multi_cls_input_features,
+            'output_features':multi_cls_output_features,
+            'mode':"classification",
+            'train_fraction':1.0,
+            'val_fraction':0.3,
+            'models':["ExtraTreeClassifier",
+                    "RandomForestClassifier",
+                    "XGBClassifier",
+                    "CatBoostClassifier",
+                    "LGBMClassifier",
+                    "GradientBoostingClassifier",
+                    "HistGradientBoostingClassifier",
+                    "ExtraTreesClassifier",
+                    "RidgeClassifier",
+                    "SVC",
+                    "KNeighborsClassifier",
+                    ],
+            'parent_iterations':12,
+            'num_classes' : 4,
+            'child_iterations':0,
+            'eval_metric': "accuracy",
+            'monitor': "f1_score",
+        }
+
+        with OptimizePipeline(**kws) as pl:
+            pl.fit(data=multi_cls_data)
 
 
 if __name__ == "__main__":

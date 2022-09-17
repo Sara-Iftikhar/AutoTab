@@ -1,4 +1,8 @@
 
+import numpy as np
+import pandas as pd
+from sklearn.datasets import make_classification
+
 from ai4water.datasets import busan_beach
 
 from autotab import OptimizePipeline
@@ -82,3 +86,19 @@ def run_basic(data=None, process_results=True, **kwargs):
     return pl
 
 
+def classification_data(n_classes):
+    input_features = [f'input_{n}' for n in range(10)]
+    outputs = ['target']
+    X, y = make_classification(n_samples=100,
+                               n_features=len(input_features),
+                               n_informative=n_classes,
+                               n_classes=n_classes,
+                               random_state=1,
+                               n_redundant=0,
+                               n_repeated=0
+                               )
+    y = y.reshape(-1, 1)
+
+    df = pd.DataFrame(np.concatenate([X, y], axis=1), columns=input_features + outputs)
+
+    return df
