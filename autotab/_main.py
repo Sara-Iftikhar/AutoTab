@@ -795,7 +795,7 @@ class OptimizePipeline(PipelineMixin):
         -------
             >>> pl = OptimizePipeline(...)
             >>> pl.change_child_iteration({"XGBRegressor": 10})
-            If we want to change iterations for more than one models
+            ... # If we want to change iterations for more than one models
             >>> pl.change_child_iteration(({"XGBRegressor": 30,
             ...                             "RandomForestRegressor": 20}))
         """
@@ -1406,13 +1406,16 @@ class OptimizePipeline(PipelineMixin):
     )->float:
         """performs cross validation and evaluates the model"""
         for cbk in callbacks:
-            getattr(cbk, 'on_cross_val_begin')(self.parent_iter_, x=x, y=y, validation_data=validation_data)
+            getattr(cbk, 'on_cross_val_begin')(model, self.parent_iter_, x=x, y=y, validation_data=validation_data)
 
-        val_scores = model.cross_val_score(
-            *combine_train_val(x, y, validation_data=validation_data),
-            scoring=[self.eval_metric] + self.monitor,
-            refit=False
-        )
+        try:
+            val_scores = model.cross_val_score(
+                *combine_train_val(x, y, validation_data=validation_data),
+                scoring=[self.eval_metric] + self.monitor,
+                refit=False
+            )
+        except ValueError:
+            print(model.config['x_transformation'])
 
         for cbk in callbacks:
             getattr(cbk, 'on_cross_val_end')(
@@ -2047,7 +2050,7 @@ class OptimizePipeline(PipelineMixin):
         # save parent_suggestions
             parent_suggestions = jsonize(self.parent_suggestions_)
             with open(os.path.join(self.path, "parent_suggestions.json"), "w") as fp:
-                json.dump(parent_suggestions, fp, sort_keys=True)
+                json.dump(parent_suggestions, fp, sort_keys=True, indent=True)
 
             # make a 2d array of all errors being monitored.
             errors = pd.concat([self.metrics_,
@@ -2975,7 +2978,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         t, p = model.predict(*data, return_true=True, process_results=False)
 
         for cbk in callbacks:
-            getattr(cbk, 'on_eval_begin')(self.parent_iter_, x=None, y=None, validation_data=data)
+            getattr(cbk, 'on_eval_begin')(model, self.parent_iter_, x=None, y=None, validation_data=data)
 
         if len(p) == p.size:
             p = p.reshape(-1, 1)  # TODO, for cls, Metrics do not accept (n,) array
@@ -3026,7 +3029,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                     self.metrics_best_.at[self.parent_iter_, _metric] = pm
 
         for cbk in callbacks:
-            getattr(cbk, 'on_eval_end')(self.parent_iter_, x=None, y=None, validation_data=data)
+            getattr(cbk, 'on_eval_end')(model, self.parent_iter_, x=None, y=None, validation_data=data)
 
         return val_score
 
@@ -3067,7 +3070,6 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         if x is None:
             # case 3: only data should be given
-
 
             assert y is None, f"y must only be given if x is given. x is {type(x)}"
             assert data is not None, f"if x is given, data must not be given"

@@ -10,11 +10,11 @@ class Callbacks(object):
     """callbacks to be executed."""
 
     def on_build_begin(self, model, **model_kwargs)->None:
-        """called before ``build`` method of parent loop"""
+        """called before ``build`` method of parent and loop"""
         return
 
     def on_build_end(self, model, **model_kwargs)->None:
-        """called at the end ``build`` method of parent loop"""
+        """called at the end ``build`` method of parent and loop"""
         return
 
     def on_fit_begin(self, x=None, y=None, validation_data=None)->None:
@@ -26,11 +26,11 @@ class Callbacks(object):
         """called at the end ``fit`` method of parent loop.  This callback does not run
         when cross validation is used. For that consider using ``on_cross_val_end``."""
 
-    def on_eval_begin(self, iter_num=None, x=None, y=None, validation_data=None)->None:
+    def on_eval_begin(self, model, iter_num=None, x=None, y=None, validation_data=None)->None:
         """called before ``evaluate`` method of parent loop"""
         return
 
-    def on_eval_end(self, iter_num=None, x=None, y=None, validation_data=None)->None:
+    def on_eval_end(self, model, iter_num=None, x=None, y=None, validation_data=None)->None:
         """called at the end ``evaluate`` method of parent loop"""
         return
 
