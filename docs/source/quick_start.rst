@@ -42,7 +42,7 @@ This covers all scikit-learn models, catboost, lightgbm and xgboost
     ...         'input_features': input_features,
     ...         'output_features': output_features,
     ...         'split_random': True,
-    ...     )
+    ...     }
 
     >>> with OptimizePipeline(**kws) as pl:
     >>>     pl.fit(data=data)
@@ -89,7 +89,7 @@ and xgboost model for classification purpose.
     ...         "input_features": input_features,
     ...         "output_features": output_features,
     ...         "split_random": True,
-    ...     )
+    ...     }
     ...
     >>> with OptimizePipeline(**kws) as pl:
     >>>     pl.fit(data=data)
@@ -115,33 +115,34 @@ setting values for ``batch_size`` and ``lr``.
     >>> input_features = data.columns.tolist()[0:-1]
     >>> output_features = data.columns.tolist()[-1:]
 
-    >>> pl = OptimizePipeline(
-    ...         inputs_to_transform=input_features,
-    ...         outputs_to_transform=output_features,
-    ...         models=["MLP", "LSTM", "CNN", "CNNLSTM", "TFT", "TCN", "LSTMAutoEncoder"],
-    ...         parent_iterations=30,
-    ...         child_iterations=12,
-    ...         parent_algorithm='bayes',
-    ...         child_algorithm='bayes',
-    ...         eval_metric='mse',
-    ...         monitor=['r2', 'nse'],
-    ...         input_features=input_features,
-    ...         output_features=output_features,
-    ...         split_random=True,
-    ...         epochs=100,
-    ...         category="DL",
-    ...         ts_args={"lookback": 14},
-    ...     )
-
-    >>> pl.fit(data=data)
+    >>> kws = {
+    ...         "inputs_to_transform": input_features,
+    ...         "outputs_to_transform": output_features,
+    ...         "models": ["MLP", "LSTM", "CNN", "CNNLSTM", "TFT", "TCN", "LSTMAutoEncoder"],
+    ...         "parent_iterations": 30,
+    ...         "child_iterations": 12,
+    ...         "parent_algorithm": 'bayes',
+    ...         "child_algorithm": 'bayes',
+    ...         "eval_metric": 'mse',
+    ...         "monitor": ['r2', 'nse'],
+    ...         "input_features": input_features,
+    ...         "output_features": output_features,
+    ...         "split_random": True,
+    ...         "epochs": 100,
+    ...         "category": "DL",
+    ...         "ts_args": {"lookback": 14},
+    ...     }
+    >>> with OptimizePipeline(**kws) as plt
+    >>>     pl.fit(data=data)
 
     >>> pl.post_fit(data=data)
 
 deep learning models (classification)
 =====================================
 
-This covers ``MLP`` [3]_, ``LSTM`` [5]_, ``CNN`` [4]_, ``CNNLSTM`` [6]_, ``TFT`` [9]_,
-``TCN`` [8]_, ``LSTMAutoEncoder`` [7]_ for classification problem. Each model
+Following example shows the usage of ``MLP`` [3]_, ``LSTM`` [5]_, ``CNN`` [4]_,
+``CNNLSTM`` [6]_, ``TFT`` [9]_,
+``TCN`` [8]_, ``LSTMAutoEncoder`` [7]_ architectures for classification problem. Each model
 can consist of stacks of layers. For example MLP can consist of stacks of
 Dense [10]_ layers. The number of layers are also optimized.
 
@@ -154,27 +155,27 @@ Dense [10]_ layers. The number of layers are also optimized.
     >>> input_features = data.columns.tolist()[0:-1]
     >>> output_features = data.columns.tolist()[-1:]
 
-    >>> pl = OptimizePipeline(
-    ...         category="DL",
-    ...         mode="classification",
-    ...         eval_metric="accuracy",
-    ...         inputs_to_transform=input_features,
-    ...         outputs_to_transform=output_features,
-    ...         models=["MLP", "CNN"],
-    ...         parent_iterations=30,
-    ...         child_iterations=12,
-    ...         parent_algorithm='bayes',
-    ...         child_algorithm='bayes',
-    ...         monitor=['f1_score'],
-    ...         input_features=input_features,
-    ...         output_features=output_features,
-    ...         split_random=True,
-    ...         epochs=100,
-    ...         num_classes=2,
-    ...         ts_args={"lookback": 5},
-    ...     )
-
-    >>> pl.fit(data=data)
+    >>> kws = {
+    ...         "category="DL",
+    ...         "mode": "classification",
+    ...         "eval_metric": "accuracy",
+    ...         "inputs_to_transform": input_features,
+    ...         "outputs_to_transform": output_features,
+    ...         "models": ["MLP", "CNN"],
+    ...         "parent_iterations": 30,
+    ...         "child_iterations": 12,
+    ...         "parent_algorithm": 'bayes',
+    ...         "child_algorithm": 'bayes',
+    ...         "monitor": ['f1_score'],
+    ...         "input_features": input_features,
+    ...         "output_features": output_features,
+    ...         "split_random": True,
+    ...         "epochs": 100,
+    ...         "num_classes": 2,
+    ...         "ts_args": {"lookback": 5},
+    ...     }
+    >>> with OptimizePipeline(**kws) as pl:
+    >>>     pl.fit(data=data)
 
     >>> pl.post_fit(data=data)
 
@@ -196,23 +197,24 @@ For multi-class classification with neural networks, we must set
     >>> outputs = ["target"]
     >>> data = pd.DataFrame(np.hstack([x, y.reshape(-1,1)]), columns=inputs+outputs)
     ...
-    >>> pl = OptimizePipeline(models=[
+    >>> kws = {"models": [
     ...         "MLP",
     ...     ],
-    ...         input_features=inputs,
-    ...         output_features=outputs,
-    ...         parent_algorithm="bayes",
-    ...         loss="categorical_crossentropy",
-    ...         parent_iterations=10,
-    ...         child_iterations=0,
-    ...         epochs=20,
-    ...         category="DL",
-    ...         mode="classification",
-    ...         num_classes = 4,
-    ...         eval_metric="accuracy",
-    ...         monitor="f1_score",
-    ...     )
-    >>> pl.fit(data=data)
+    ...         "input_features": inputs,
+    ...         "output_features": outputs,
+    ...         "parent_algorithm": "bayes",
+    ...         "loss": "categorical_crossentropy",
+    ...         "parent_iterations": 10,
+    ...         "child_iterations": 0,
+    ...         "epochs": 20,
+    ...         "category": "DL",
+    ...         "mode": "classification",
+    ...         "num_classes ":  4,
+    ...         "eval_metric": "accuracy",
+    ...         "monitor": "f1_score",
+    ...     }
+    >>> with OptimizePipeline(**kws) as pl:
+    >>>     pl.fit(data=data)
 
 Check ``ClassificationMetrics`` [1]_  class of SeqMetrics [2]_ library for the name
 of metrics which can be used for monitoring
