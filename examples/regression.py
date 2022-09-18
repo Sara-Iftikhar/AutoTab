@@ -16,44 +16,41 @@ print(data.shape)
 print(data.head())
 ##########################################
 
-pl = OptimizePipeline(
-    inputs_to_transform=data.columns.tolist()[0:-1],
-    outputs_to_transform=data.columns.tolist()[-1:],
-    parent_iterations=30,
-    child_iterations=0,  # don't optimize hyperparamters only for demonstration
-    parent_algorithm='bayes',
-    child_algorithm='random',
-    eval_metric='mse',
-    monitor=['r2', 'r2_score'],
-    models=[ "LinearRegression",
-            "LassoLars",
-            "Lasso",
-            "RandomForestRegressor",
-            "HistGradientBoostingRegressor",
-             "CatBoostRegressor",
-             "XGBRegressor",
-             "LGBMRegressor",
-             "GradientBoostingRegressor",
-             "ExtraTreeRegressor",
-             "ExtraTreesRegressor"
-             ],
 
-    input_features=data.columns.tolist()[0:-1],
-    output_features=data.columns.tolist()[-1:],
-    split_random=True,
-)
+kws = {
+'inputs_to_transform': data.columns.tolist()[0:-1],
+'outputs_to_transform': data.columns.tolist()[-1:],
+'parent_iterations': 30,
+'child_iterations': 0,  # don't optimize hyperparamters only for demonstration
+'parent_algorithm': 'bayes',
+'child_algorithm': 'random',
+'eval_metric': 'mse',
+'monitor': ['r2', 'r2_score'],
+'models': [ "LinearRegression",
+        "LassoLars",
+        "Lasso",
+        "RandomForestRegressor",
+        "HistGradientBoostingRegressor",
+         "CatBoostRegressor",
+         "XGBRegressor",
+         "LGBMRegressor",
+         "GradientBoostingRegressor",
+         "ExtraTreeRegressor",
+         "ExtraTreesRegressor"
+         ],
 
-#%%
+'input_features': data.columns.tolist()[0:-1],
+'output_features': data.columns.tolist()[-1:],
+'split_random': True,
+}
 
-pl._version_info()
+with OptimizePipeline(**kws) as pl:
 
-#%%
+    pl._version_info()
 
-pl.change_transformation_behavior('yeo-johnson', {'pre_center': True})
+    pl.change_transformation_behavior('yeo-johnson', {'pre_center': True})
 
-#%%
-
-results = pl.fit(data=data, process_results=False)
+    results = pl.fit(data=data, process_results=False)
 
 ##############################################
 

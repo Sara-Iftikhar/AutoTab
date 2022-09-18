@@ -18,40 +18,42 @@ This covers all scikit-learn models, catboost, lightgbm and xgboost
     >>> input_features = data.columns.tolist()[0:-1]
     >>> output_features = data.columns.tolist()[-1:]
 
-    >>> pl = OptimizePipeline(
-    ...         inputs_to_transform=input_features,
-    ...         outputs_to_transform=output_features,
-    ...             models=["LinearRegression",
-    ...        "LassoLars",
-    ...        "Lasso",
-    ...        "RandomForestRegressor",
-    ...        "HistGradientBoostingRegressor",
-    ...         "CatBoostRegressor",
-    ...         "XGBRegressor",
-    ...         "LGBMRegressor",
-    ...         "GradientBoostingRegressor",
-    ...         "ExtraTreeRegressor",
-    ...         "ExtraTreesRegressor"
+    >>> kws = {
+    ...         'inputs_to_transform': input_features,
+    ...         'outputs_to_transform': output_features,
+    ...         'models': ["LinearRegression",
+    ...             "LassoLars",
+    ...             "Lasso",
+    ...             "RandomForestRegressor",
+    ...             "HistGradientBoostingRegressor",
+    ...             "CatBoostRegressor",
+    ...             "XGBRegressor",
+    ...             "LGBMRegressor",
+    ...             "GradientBoostingRegressor",
+    ...             "ExtraTreeRegressor",
+    ...             "ExtraTreesRegressor"
     ...                         ],
-    ...         parent_iterations=30,
-    ...         child_iterations=12,
-    ...         parent_algorithm='bayes',
-    ...         child_algorithm='bayes',
-    ...         eval_metric='mse',
-    ...         monitor=['r2', 'nse'],
-    ...         input_features=input_features,
-    ...         output_features=output_features,
-    ...         split_random=True,
+    ...         'parent_iterations': 30,
+    ...         'child_iterations': 12,
+    ...         'parent_algorithm': 'bayes',
+    ...         'child_algorithm': 'bayes',
+    ...         'eval_metric': 'mse',
+    ...         'monitor': ['r2', 'nse'],
+    ...         'input_features': input_features,
+    ...         'output_features': output_features,
+    ...         'split_random': True,
     ...     )
 
-    >>> pl.fit(data=data)
+    >>> with OptimizePipeline(**kws) as pl:
+    >>>     pl.fit(data=data)
 
     >>> pl.post_fit(data=data)
 
 machine learning models (classification)
 ==============================================================
 
-This covers all scikit-learn models, catboost, lightgbm and xgboost
+The following example shows usage of all scikit-learn models, catboost, lightgbm
+and xgboost model for classification purpose.
 
 .. code-block:: python
 
@@ -62,12 +64,12 @@ This covers all scikit-learn models, catboost, lightgbm and xgboost
     >>> input_features = data.columns.tolist()[0:-1]
     >>> output_features = data.columns.tolist()[-1:]
 
-    >>> pl = OptimizePipeline(
-    ...          mode="classification",
-    ...          eval_metric="accuracy",
-    ...         inputs_to_transform=input_features,
-    ...         outputs_to_transform=output_features,
-    ...             models=["ExtraTreeClassifier",
+    >>> kws = {
+    ...         "ode": "classification",
+    ...         "eval_metric": "accuracy",
+    ...         "inputs_to_transform": input_features,
+    ...         "outputs_to_transform": output_features,
+    ...         "models": ["ExtraTreeClassifier",
     ...                         "RandomForestClassifier",
     ...                         "XGBClassifier",
     ...                         "CatBoostClassifier",
@@ -79,17 +81,18 @@ This covers all scikit-learn models, catboost, lightgbm and xgboost
     ...                         "SVC",
     ...                         "KNeighborsClassifier",
     ...                         ],
-    ...         parent_iterations=30,
-    ...         child_iterations=12,
-    ...         parent_algorithm='bayes',
-    ...         child_algorithm='bayes',
-    ...         monitor=['accuracy'],
-    ...         input_features=input_features,
-    ...         output_features=output_features,
-    ...         split_random=True,
+    ...         "parent_iterations": 30,
+    ...         "child_iterations": 12,
+    ...         "parent_algorithm": 'bayes',
+    ...         "child_algorithm": 'bayes',
+    ...         "monitor": ['accuracy'],
+    ...         "input_features": input_features,
+    ...         "output_features": output_features,
+    ...         "split_random": True,
     ...     )
-
-    >>> pl.fit(data=data)
+    ...
+    >>> with OptimizePipeline(**kws) as pl:
+    >>>     pl.fit(data=data)
 
     >>> pl.post_fit(data=data)
 
