@@ -96,9 +96,11 @@ DL_MODELS = {
 SEP = os.sep
 
 DEFAULT_TRANSFORMATIONS = [
-    "minmax", "center", "scale", "zscore", "box-cox", "yeo-johnson",
-    "quantile", "quantile_normal",
-    "robust", "log", "log2", "log10", "sqrt", "none",
+    "minmax", "center", "scale", "zscore",
+    "box-cox", "yeo-johnson",  "quantile", "quantile_normal",  "robust",
+    "log", "log2", "log10", "sqrt",
+    "pareto", #"vast",
+    "none",
               ]
 
 METRIC_TYPES = {
@@ -156,7 +158,9 @@ class PipelineMixin(object):
             "log": {'treat_negatives': True, 'replace_zeros': True},
             "log2": {'treat_negatives': True, 'replace_zeros': True},
             "log10": {'treat_negatives': True, 'replace_zeros': True},
-            "sqrt": {'treat_negatives': True}
+            "sqrt": {'treat_negatives': True},
+            "vast": {},
+            "pareto": {},
         }
 
         self.feature_transformations = {}
