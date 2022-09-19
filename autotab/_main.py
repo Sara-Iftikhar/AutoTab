@@ -519,6 +519,9 @@ class OptimizePipeline(PipelineMixin):
         must be saved.
 
         """
+        if exc_type:
+            print(f"As {exc_type} occured, version info is below: \n {self._version_info()}")
+
         self.exc_type_ = exc_type
         self.exc_val_ = exc_val
 

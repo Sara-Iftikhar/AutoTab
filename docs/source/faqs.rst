@@ -347,3 +347,24 @@ achieve a different batch_size search space as below
     ...           )
     ... pl.change_batch_size_space([32, 64, 128, 256, 512])
 
+what is ``with``?
+=================
+We recommend the users to run pipeline using ``with`` context manager.
+This means following is recommended
+
+.. code-block::
+
+    >>> kws = {}  # collect all input arguments in dictionary
+    >>> with OptimizePipeline(**kws) as pl:
+    >>>    pl.fit(data=data)
+
+instead of following
+
+.. code-block::
+
+    >>> kws = {}  # collect all input arguments in dictionary
+    >>> pl = OptimizePipeline(**kws) as pl:
+    >>> pl.fit(data=data)
+
+The use of ``with`` will make sure that the results are saved even
+if an error is encountered uduring ``fit``. 
