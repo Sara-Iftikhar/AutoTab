@@ -159,7 +159,7 @@ class PipelineMixin(object):
             "log2": {'treat_negatives': True, 'replace_zeros': True},
             "log10": {'treat_negatives': True, 'replace_zeros': True},
             "sqrt": {'treat_negatives': True},
-            "vast": {},
+            #"vast": {},
             "pareto": {},
         }
 
@@ -167,14 +167,13 @@ class PipelineMixin(object):
         for feat in self.all_features:
             self.feature_transformations[feat] = self._transformations_methods
 
+        self._pp_plots = []
+        if self.mode == "regression":
+            self._pp_plots =  ["regression", "prediction", "murphy", "residual", "edf"]
+
     @property
     def all_features(self)->list:
         return self.input_features + self.output_features
-
-    def _pp_plots(self)->list:
-        if self.mode == "regression":
-            return ["regression", "prediction", "murphy", "residual", "edf"]
-        return []
 
 
 class OptimizePipeline(PipelineMixin):
@@ -238,7 +237,7 @@ class OptimizePipeline(PipelineMixin):
             input_features,
             output_features,
             inputs_to_transform: Union[list, dict] = None,
-            input_transformations: Union[list, dict] = None,
+            input_transformations: Union[list, dict] = None,  # todo: if we exclude vast, still appear in space
             outputs_to_transform=None,
             output_transformations: Union[list, ] = None,
             models: list = None,
@@ -2263,7 +2262,16 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         model_kwargs = config['init_paras'].pop('model_kwargs')
 
-        cls.start_time_ = config['runtime_attrs']
+        for arg in ['input_features', 'output_features']:
+            if arg in model_kwargs:
+                model_kwargs.pop(arg)
+
+        if 'mode' in config['init_paras'] and 'mode' in model_kwargs:
+            model_kwargs.pop('mode')
+
+        pl = cls(**config['init_paras'], **model_kwargs)
+
+        pl.start_time_ = config['runtime_attrs']
 
         path = os.path.dirname(config_file)
         fpath = os.path.join(path, "parent_suggestions.json")
@@ -2271,19 +2279,19 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             with open(fpath, "r") as fp:
                 parent_suggestions = json.load(fp)
 
-            cls.parent_suggestions_ = {int(k):v for k,v in parent_suggestions.items()}
-            cls.parent_iter_ = len(parent_suggestions)
+            pl.parent_suggestions_ = {int(k):v for k,v in parent_suggestions.items()}
+            pl.parent_iter_ = len(parent_suggestions)
 
         fpath = os.path.join(path, "errors.csv")
         if os.path.exists(fpath):
             errors = pd.read_csv(fpath, index_col="iterations")
 
             # don't put val_scores in metrics_
-            cls.val_scores_ = errors.pop('val_scores').values
+            pl.val_scores_ = errors.pop('val_scores').values
 
-            cls.metrics_ = errors
+            pl.metrics_ = errors
 
-        cls.taylor_plot_data_ = {
+        pl.taylor_plot_data_ = {
                 'simulations': {"test": {}},
                 'observations': {"test": None}
             }
@@ -2291,33 +2299,26 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         fpath = os.path.join(path, "taylor_data.csv")
         if os.path.exists(fpath):
             taylor_data = pd.read_csv(fpath)
-            cls.taylor_plot_data_['observations']['test'] = taylor_data.pop('observations')
+            pl.taylor_plot_data_['observations']['test'] = taylor_data.pop('observations')
 
-        cls.parent_prefix_ = os.path.basename(path)
-        cls.path = path
+        pl.parent_prefix_ = os.path.basename(path)
+        pl.path = path
 
         fpath = os.path.join(path, 'parent_seeds.csv')
         if os.path.exists(fpath):
-            cls.parent_seeds_ = pd.read_csv(fpath).values
+            pl.parent_seeds_ = pd.read_csv(fpath).values
 
         fpath = os.path.join(path, "baselines", "results.json")
-        cls.baseline_results_ = None
+        pl.baseline_results_ = None
         if os.path.exists(fpath):
             with open(fpath, 'r') as fp:
-                cls.baseline_results_ = json.load(fp)
-
-        for arg in ['input_features', 'output_features']:
-            if arg in model_kwargs:
-                model_kwargs.pop(arg)
+                pl.baseline_results_ = json.load(fp)
 
         # TODO, must check whether callbacks were used or not,
         # if true, must raise error here.
-        cls.callbacks_ = [Callbacks()]
+        pl.callbacks_ = [Callbacks()]
 
-        if 'mode' in config['init_paras'] and 'mode' in model_kwargs:
-            model_kwargs.pop('mode')
-
-        return cls(**config['init_paras'], **model_kwargs)
+        return pl
 
     @classmethod
     def from_config(cls, config: dict) -> "OptimizePipeline":
@@ -2487,7 +2488,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             metric_name: str = None,
             model_name: str = None,
             fit_on_all_train_data: bool = True,
-            verbosity:int = 1
+            verbosity:int = 1,
     )->Model:
         """
         Builds, Trains and Evaluates the **best model** with respect to metric from
@@ -2533,9 +2534,10 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             test_data = (None, None)
 
         train_x, train_y, val_x, val_y, test_x, test_y = self.verify_data(
-            x, y, data,
+            x, y, 
+            data=data,
             validation_data=None,
-            *test_data,
+            test_data=test_data,
             save=True,
             save_name="from_scracth"
         )
@@ -2616,14 +2618,20 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             model.seed_everything(int(seed))
 
         if fit_on_all_train_data:
-            model.fit(*combine_train_val(train_x, train_y, validation_data))
+            x, y = combine_train_val(train_x, train_y, validation_data)
+            model.fit(x, y)
+            self._populate_results(
+                model, x, y, *validation_data,
+                test_x=test_x, test_y=test_y,
+                model_name=model_name)
         else:
-            model.fit(train_x, train_y)
-
-        #    # todo, save x,y in disk
-
-        self._populate_results(
-            model, train_x, train_y, *validation_data, test_x, test_y, model_name=model_name)
+            if self.category == "ML":
+                model.fit(train_x, train_y)
+            else:
+                model.fit(train_x, train_y, validation_data=validation_data)
+            self._populate_results(
+                model, train_x, train_y, *validation_data, test_x, test_y,
+                model_name=model_name)
 
         return model
 
@@ -2634,8 +2642,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             train_y,
             val_x,
             val_y,
-            test_x,
-            test_y,
+            test_x=None,
+            test_y=None,
             model_name=None
     ) -> None:
         """evaluates/makes predictions from model on traiing/validation/test data.
@@ -2643,9 +2651,12 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         dictionary
         """
 
-        model.predict(train_x, train_y, metrics="all", plots=self._pp_plots())
-        model.predict(val_x, val_y, metrics="all", plots=self._pp_plots())
-        t, p = model.predict(test_x, test_y, metrics="all", plots=self._pp_plots(), return_true=True)
+        model.predict(train_x, train_y, metrics="all", plots=self._pp_plots)
+
+        t, p = model.predict(val_x, val_y, metrics="all", plots=self._pp_plots, return_true=True)
+
+        if test_x is not None:
+            t, p = model.predict(test_x, test_y, metrics="all", plots=self._pp_plots, return_true=True)
 
 
         if model_name:
@@ -2691,7 +2702,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             t, p = model.predict(x=x, y=y, process_results=False, return_true=True)
         else:
             assert x is None
-            t, p = model.predict(data=data, process_results=False, return_true=True)
+            t, p = model.predict_on_test_data(data=data, process_results=False, return_true=True)
 
         errors = self.Metrics(t, p, multiclass=model.is_multiclass_)
 
@@ -3128,6 +3139,9 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                 data_to_csv(os.path.join(self.path, f"training_data_{save_name}.csv"), self.all_features, train_x, train_y)
                 data_to_csv(os.path.join(self.path, f"validation_data_{save_name}.csv"), self.all_features, val_x, val_y)
                 data_to_csv(os.path.join(self.path, f"test_data_{save_name}.csv"), self.all_features, test_x, test_y)
+
+        if train_x.ndim > 2 and 'murphy' in self._pp_plots:
+            self._pp_plots.remove('murphy')
 
         return train_x, train_y, val_x, val_y, test_x, test_y
 
