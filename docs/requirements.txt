@@ -1,5 +1,10 @@
 #ai4water[ml_hpo]>=1.02
 git+https://github.com/AtrCheema/AI4Water.git@dev
+lightgbm
+hyperopt
+optuna
+catboost
+xgboost
 sphinx
 sphinx-prompt
 sphinx_copybutton

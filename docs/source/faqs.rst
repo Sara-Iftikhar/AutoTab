@@ -367,4 +367,4 @@ instead of following
     >>> pl.fit(data=data)
 
 The use of ``with`` will make sure that the results are saved even
-if an error is encountered uduring ``fit``. 
+if an error is encountered uduring ``fit``.
