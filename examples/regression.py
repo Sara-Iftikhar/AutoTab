@@ -48,8 +48,6 @@ with OptimizePipeline(**kws) as pl:
 
     pl._pp_plots = ["regression", "prediction", "residual", "edf"]
 
-    pl._pp_plots.remove('murphy')
-
     pl.change_transformation_behavior('yeo-johnson', {'pre_center': True})
 
     results = pl.fit(data=data, process_results=False)
