@@ -1,5 +1,6 @@
 #ai4water[ml_hpo]>=1.02
 git+https://github.com/AtrCheema/AI4Water.git@dev
+git+https://github.com/AtrCheema/PDPbox1.git
 lightgbm
 hyperopt
 optuna
@@ -13,6 +14,6 @@ sphinx_rtd_theme
 sphinx_issues
 sphinx-gallery
 h5py
-optuna
+optuna<=2.10.1
 tensorflow==2.7
 protobuf==3.19.1

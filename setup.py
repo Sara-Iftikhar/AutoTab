@@ -14,7 +14,7 @@ setup(
 
     name='autotab',
 
-    version="0.11",
+    version="0.12",
 
     description='optimization of ML pipeline using hierarchical optimization method',
     long_description=long_desc,
@@ -46,11 +46,10 @@ setup(
     packages=['autotab'],
 
     install_requires=[
-        'ai4water[ml_hpo]>=1.2',
-        'h5py',
+        'ai4water[ml_hpo]>=1.6',
     ],
     extras_require={
-        'all': ["ai4water[ml_hpo]>=1.2",
+        'all': ["ai4water[ml_hpo]>=1.6",
                 "tensorflow==2.7",
                 "h5py"],
 
