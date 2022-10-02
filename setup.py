@@ -47,9 +47,11 @@ setup(
 
     install_requires=[
         'ai4water[ml_hpo]>=1.6',
+        'scikit-optimize',
     ],
     extras_require={
         'all': ["ai4water[ml_hpo]>=1.6",
+                'scikit-optimize',
                 "tensorflow==2.7",
                 "h5py"],
 
