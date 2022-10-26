@@ -133,7 +133,9 @@ class PipelineMixin(object):
             mode,
             category,
     ):
-        assert mode in ("regression", "classification"), f"{mode} not allowed as mode"
+        assert mode in ("regression", "classification"), f"""
+        {mode} not allowed as mode. It must be either regression or classification.
+        """
         self.mode = mode
 
         assert category in ("DL", "ML")
@@ -619,6 +621,18 @@ class OptimizePipeline(PipelineMixin):
             >>> rf_space = {'max_depth': [5,10, 15, 20],
             >>>          'n_models': [5,10, 15, 20]}
             >>> pl.update_model_space({"RandomForestRegressor": rf_space})
+
+            Similarly we can also update for a deep learning model as below
+
+            >>> pl = OptimizePipeline(input_features=["tide_cm"], output_features="tetx_coppml",
+            ...       category="DL")
+            >>> pl.update_model_space({"MLP": {
+            ...     "units": Integer(low=8, high=128, prior='uniform', transform='identity', name='units'),
+            ...     "activation": Categorical(["relu", "elu", "tanh", "sigmoid"], name="activation"),
+            ...     "num_layers": Integer(low=1, high=5, name="num_layers")
+            ...         }})
+            we can confirm it by printing the model space
+            >>> pl.model_space['MLP']
         """
         for model, space in space.items():
             if model not in self.model_space:
@@ -1922,7 +1936,7 @@ class OptimizePipeline(PipelineMixin):
             **kwargs
     ) -> plt.Figure:
         """
-        makes `Taylor`_'s plot using the best version of each model.
+        makes Taylor_'s plot using the best version of each model.
         The number of models in taylor plot will be equal to the number
         of models which have been considered by the model.
 
@@ -1958,7 +1972,12 @@ class OptimizePipeline(PipelineMixin):
             verbosity : int, optional (default=0)
                 determines the amount of print information
             **kwargs :
-                any additional keyword arguments for taylor_plot function of `easy_mpl`_.
+                any additional keyword arguments for taylor_plot function of easy_mpl_.
+
+        Returns
+        -------
+        matplotlib.pyplot.Figure
+            matplotlib Figure object which can be used for further processing
 
         Examples
         --------
@@ -1976,11 +1995,6 @@ class OptimizePipeline(PipelineMixin):
         >>> pl.taylor_plot(data=data, plot_bias=True)
         ... # get the matplotlb Figure object for further processing
         >>> fig = pl.taylor_plot(data=data, show=False)
-
-        Returns
-        -------
-        matplotlib.pyplot.Figure
-            matplotlib Figure object which can be used for further processing
 
         .. _easy_mpl:
             https://github.com/Sara-Iftikhar/easy_mpl#taylor_plot

@@ -1,6 +1,5 @@
 #ai4water[ml_hpo]>=1.02
 git+https://github.com/AtrCheema/AI4Water.git@dev
-git+https://github.com/AtrCheema/PDPbox1.git
 lightgbm
 hyperopt
 optuna

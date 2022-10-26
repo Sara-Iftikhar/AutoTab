@@ -219,8 +219,8 @@ For multi-class classification with neural networks, we must set
 Check ``ClassificationMetrics`` [1]_  class of SeqMetrics [2]_ library for the name
 of metrics which can be used for monitoring
 
-.. [1] `<https://seqmetrics.readthedocs.io/en/latest/cls.html#classificationmetrics>_`
-.. [2] `<https://seqmetrics.readthedocs.io/en/latest/index.html>_`
+.. [1] https://seqmetrics.readthedocs.io/en/latest/cls.html#classificationmetrics
+.. [2] https://seqmetrics.readthedocs.io/en/latest/index.html
 .. [3] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.MLP
 .. [4] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.CNN
 .. [5] https://ai4water.readthedocs.io/en/latest/models/models.html#ai4water.models.LSTM

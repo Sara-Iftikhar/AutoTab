@@ -44,4 +44,3 @@ choose to install tensorflow as well by using ``all`` option
     pip install autotab[all]
 
 The ``all`` option will install tensorflow 2.7 version along with autotab and h5py.
-For list of all options see :ref:`installation_options` options
