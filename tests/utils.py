@@ -7,9 +7,10 @@ from ai4water.datasets import busan_beach
 
 from autotab import OptimizePipeline
 
-inputs = ['tide_cm', 'wat_temp_c', 'sal_psu',
+inputs = ['tide_cm', #'wat_temp_c', 'sal_psu',
           'pcp3_mm',  # 'pcp6_mm', 'pcp12_mm',
-          'pcp_mm', 'air_temp_c', 'rel_hum']
+          'pcp_mm', #'air_temp_c', 'rel_hum'
+          ]
 
 rgr_data = busan_beach(inputs=inputs)
 

@@ -167,7 +167,14 @@ class PipelineMixin(object):
 
         self.feature_transformations = {}
         for feat in self.all_features:
-            self.feature_transformations[feat] = self._transformations_methods
+            default_feat_trans = self._transformations_methods
+            if self.input_transformations is not None:
+                # It is possible that the
+                # user has specified `input_transformtions` argument. In that case
+                # use only those from feat_trans (default) which are in `input_transformations`
+                default_feat_trans = {k:v for k,v in default_feat_trans.items() if k in self.input_transformations}
+
+            self.feature_transformations[feat] = default_feat_trans
 
         self._pp_plots = []
         if self.mode == "regression":
@@ -509,7 +516,7 @@ class OptimizePipeline(PipelineMixin):
             self.batch_space = [Categorical([8, 16, 32, 64], name="batch_size")]
             self.lr_space = [Real(1e-5, 0.05, num_samples=10, name="lr")]
 
-        # information about transformations which are
+        # information about transformations which are to be modified
         self._tr_modifications = {}
 
     def __enter__(self):
@@ -522,7 +529,7 @@ class OptimizePipeline(PipelineMixin):
 
         """
         if exc_type:
-            print(f"As {exc_type} occured, version info is below: \n {self._version_info()}")
+            print(f"{exc_type} occured, version info is below: \n {self._version_info()}")
 
         self.exc_type_ = exc_type
         self.exc_val_ = exc_val
@@ -867,11 +874,15 @@ class OptimizePipeline(PipelineMixin):
                     append[out_feature] = y_transformations
                 y_categories = list(self.output_transformations.values())
 
+        # append will contain modifications that need to be applied for both x_spacea nd y_space
         append.update(self._tr_modifications)
 
-        sp = make_space(self.inputs_to_transform + (self.outputs_to_transform or []),
-                        categories=list(set(x_categories + y_categories)),
-                        append=append)
+        sp = make_space(self.inputs_to_transform, categories=x_categories,
+                          append={k:v for k,v in append.items() if k in self.input_features})
+
+        if self.outputs_to_transform:
+            sp += make_space(self.outputs_to_transform, categories=y_categories,
+                              append={k:v for k,v in append.items() if k in self.output_features})
 
         if len(self.models)>1:
             algos = Categorical(self.models, name="model")
@@ -1428,14 +1439,11 @@ class OptimizePipeline(PipelineMixin):
         for cbk in callbacks:
             getattr(cbk, 'on_cross_val_begin')(model, self.parent_iter_, x=x, y=y, validation_data=validation_data)
 
-        try:
-            val_scores = model.cross_val_score(
-                *combine_train_val(x, y, validation_data=validation_data),
-                scoring=[self.eval_metric] + self.monitor,
-                refit=False
-            )
-        except ValueError:
-            print(model.config['x_transformation'])
+        val_scores = model.cross_val_score(
+            *combine_train_val(x, y, validation_data=validation_data),
+            scoring=[self.eval_metric] + self.monitor,
+            refit=False
+        )
 
         for cbk in callbacks:
             getattr(cbk, 'on_cross_val_end')(

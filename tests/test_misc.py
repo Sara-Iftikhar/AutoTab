@@ -24,9 +24,10 @@ class TestMisc(unittest.TestCase):
     def test_r2_as_val_metric(self):
         """test a specifc val metric"""
         run_basic(eval_metric="r2",
-                  parent_iterations=10,
+                  parent_iterations=4,
                   child_iterations=0,
-                  process_results=False
+                  process_results=False,
+                  parent_algorithm="random"
                   )
 
         return
@@ -37,7 +38,7 @@ class TestMisc(unittest.TestCase):
                   parent_iterations=3,
                   parent_algorithm="random",
                   child_iterations=0,
-                  cross_validator={"KFold": {"n_splits": 5}},
+                  cross_validator={"KFold": {"n_splits": 4}},
                   input_transformations=['log', 'log10', 'sqrt', 'robust'],
                   process_results=False
                   )
@@ -48,6 +49,8 @@ class TestMisc(unittest.TestCase):
             eval_metric="r2",
             child_iterations=0,
             process_results=False,
+            parent_algorithm="random",
+            parent_iterations=3,
         )
 
         pl2 = OptimizePipeline.from_config_file(os.path.join(pl.path, "config.json"))
@@ -58,6 +61,8 @@ class TestMisc(unittest.TestCase):
         pl = build_basic(
             eval_metric="r2",
             child_iterations=0,
+            parent_iterations=3,
+            parent_algorithm="random",
         )
         pl.fit(x=train_x, y=train_y, validation_data=(val_x, val_y), process_results=False)
 
@@ -98,13 +103,16 @@ class TestMisc(unittest.TestCase):
                 'group2': ['pcp_mm', 'air_temp_c', 'rel_hum']
             },
             child_iterations=0,
-            process_results=False
+            process_results=False,
+            parent_algorithm="random",
+            parent_iterations=4,
         )
         pl.post_fit(data=rgr_data, show=self.show)
         pl.cleanup()
         return
-
+    #
     def test_no_model(self):
+
         pl = OptimizePipeline(input_features=['a'], output_features="", models=[])
         assert len(pl.models) == 0
         return
@@ -114,6 +122,8 @@ class TestMisc(unittest.TestCase):
         pl = build_basic(
             eval_metric="r2",
             child_iterations=0,
+            parent_algorithm="random",
+            parent_iterations=4,
         )
         pl.fit(data=rgr_data, process_results=False)
         pl.post_fit(data=rgr_data, fit_on_all_train_data=False, show=self.show)
@@ -159,7 +169,7 @@ class TestMisc(unittest.TestCase):
     def test_contex_manager_no_model(self):
 
         class MyCallbacks(Callbacks):
-            def on_eval_begin(self, iter_num=None, x=None, y=None, validation_data=None) ->None:
+            def on_eval_begin(self, model, iter_num=None, x=None, y=None, validation_data=None) ->None:
                 print("raising Value Error")
                 raise ValueError
         kws = make_kws()
@@ -180,6 +190,75 @@ class TestMisc(unittest.TestCase):
         pl.report()
         pl._save_config()
         return
+
+    def test_input_transformations(self):
+        """makes sure that the transformations which are not part of 'input_transformations'
+        argument do not appear in space.
+        """
+        pl = build_basic(input_transformations=[
+            "minmax", "center", "scale", "zscore",  "box-cox", "robust", "log", "log2", "log10",
+            "sqrt", "pareto", "none"
+        ])
+        for sp in pl.space():
+            assert all([trans not in sp.categories for trans in [
+                'yeo-johnson', 'quntile', 'qunatile_normal', 'vast']])
+        return
+
+    def test_input_transformations1(self):
+        """makes sure that the transformations which are not part of 'input_transformations'
+        argument do not appear in space. Test it by using pl.remove_transformation() method
+        """
+        pl = build_basic(input_transformations=[
+            "minmax", "center", "scale", "zscore",  "box-cox",  "robust", "log", "log2", "log10",
+            "sqrt", "pareto", "none"
+        ])
+        pl.remove_transformation('box-cox', 'tide_cm')
+        for sp in pl.space():
+            for trans in ['yeo-johnson', 'quntile', 'qunatile_normal', 'vast']:
+                assert trans not in sp.categories, f"{trans} in categories {sp.categories}"
+        return
+
+    def test_input_transformations2(self):
+        """makes sure that the transformations which are not part of 'input_transformations'
+        argument do not appear in space. but they should appear in output_transformations
+        if not removed from there
+        """
+        pl = build_basic(input_transformations=[
+            "minmax", "center", "scale", "zscore",  "box-cox",  "robust", "log", "log2", "log10"],
+            outputs_to_transform = ['tetx_coppml']
+        )
+        pl.remove_transformation('box-cox', 'tide_cm')
+        for sp in pl.space():
+            if sp.name != "tetx_coppml":
+                for trans in ['yeo-johnson', 'quntile', 'qunatile_normal', 'vast']:
+                    assert trans not in sp.categories, f"for {sp.name} {trans} in categories {sp.categories}"
+        return
+
+    def test_input_transformations3(self):
+        """makes sure that the transformations which are not part of 'input_transformations'
+        argument do not appear in space. but they should appear in output_transformations
+        if not removed from there
+        """
+        pl = build_basic(input_transformations=[
+            "minmax", "center", "scale", "zscore",  "box-cox",  "robust", "log", "log2", "log10"],
+            output_transformations = ["minmax", "center", "scale", "zscore"]
+        )
+        pl.remove_transformation('box-cox', 'tide_cm')
+        for sp in pl.space():
+
+            if sp.name == "tetx_coppml":
+                for trans in ['yeo-johnson', 'quntile', 'qunatile_normal', 'vast', 'log']:
+                    assert trans not in sp.categories, f"{trans} in {sp.categories}"
+
+            else:
+                for trans in ['yeo-johnson', 'quntile', 'qunatile_normal', 'vast']:
+                    assert trans not in sp.categories, f"for {sp.name} {trans} in categories {sp.categories}"
+
+            if sp.name not in  ["tide_cm", 'model']:
+                # box-cox is removed for tide_cm, it should be in output space
+                assert 'box-cox' in sp.categories, f"{sp.name}"
+        return
+
 
 
 if __name__ == "__main__":
