@@ -20,14 +20,15 @@ print(data.head())
 kws = {
 'inputs_to_transform': data.columns.tolist()[0:-1],
 'outputs_to_transform': data.columns.tolist()[-1:],
-'parent_iterations': 50,
+'parent_iterations': 10,
 'child_iterations': 0,  # don't optimize hyperparamters only for demonstration
 'parent_algorithm': 'bayes',
 'child_algorithm': 'random',
-'eval_metric': 'mse',
+'eval_metric': 'rmse',
+    'cv_parent_hpo': True,
+    'cross_validator': {"KFold": {"n_splits": 5}},
 'monitor': ['r2', 'r2_score'],
 'models': [ "LinearRegression",
-        "LassoLars",
         "Lasso",
         "RandomForestRegressor",
         "HistGradientBoostingRegressor",
@@ -46,7 +47,7 @@ kws = {
 }
 
 with OptimizePipeline(**kws) as pl:
-
+    pl.remove_transformation('box-cox')
     pl._pp_plots = ["regression", "prediction", "residual", "edf"]
 
     pl.change_transformation_behavior('yeo-johnson', {'pre_center': True})
@@ -57,7 +58,10 @@ with OptimizePipeline(**kws) as pl:
 
 # plot the convergence plot to illustrate how much improvement occurred w.r.t evaluation metric
 
-pl.optimizer_._plot_convergence(save=False)
+pl.optimizer_._plot_convergence(save=False, grid=True)
+
+# %%
+pl.optimizer_._plot_convergence(save=False, original=True, grid=True)
 
 ##############################################
 
@@ -117,14 +121,24 @@ pl.compare_models(plot_type="bar_chart")
 pl.compare_models("r2", plot_type="bar_chart")
 
 # %%
+model = pl.be_best_model_from_config(data=data, metric_name="r2_score")
+
+# %%
+model.evaluate_on_test_data(data=data, metrics="r2_score")
+# %%
 model = pl.bfe_best_model_from_scratch(metric_name='r2_score', data=data)
+
+# %%
+model.evaluate_on_training_data(data=data, metrics="r2_score")
+
+# %%
+model.evaluate_on_test_data(data=data, metrics="r2_score")
 
 #################################################
 
 print(f"all results are save in {pl.path} folder")
 
 #################################################
-
 
 # remove all the files/folders which are now nomore required.
 pl.cleanup()
