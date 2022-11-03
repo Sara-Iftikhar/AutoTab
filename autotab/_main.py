@@ -8,6 +8,7 @@ import math
 import types
 import shutil
 import inspect
+import warnings
 from typing import Union
 from typing import Tuple
 from typing import Callable
@@ -121,6 +122,11 @@ METRIC_TYPES = {
     "bias": "min",
     "med_seq_error": "min",
     "mae": "min",
+}
+
+METRIC_NAMES = {
+    'r2': "$R^2$",
+    "r2_score": "$R^2$ Score"
 }
 
 
@@ -1460,9 +1466,15 @@ class OptimizePipeline(PipelineMixin):
             self.metrics_.at[self.parent_iter_, k] = pm_val
 
             func = compare_func1(METRIC_TYPES[k])
-            best_so_far = func(self.metrics_best_.loc[:self.parent_iter_, k])
 
-            best_so_far = fill_val(METRIC_TYPES[k], best_so_far)
+            pm_until_this_iter = self.metrics_best_.loc[:self.parent_iter_, k]
+
+            if pm_until_this_iter.isna().sum() == pm_until_this_iter.size:
+                best_so_far = fill_val(METRIC_TYPES[k], np.nan)
+            else:
+                best_so_far = func(self.metrics_best_.loc[:self.parent_iter_, k])
+
+                best_so_far = fill_val(METRIC_TYPES[k], best_so_far)
 
             func = compare_func(METRIC_TYPES[k])
             if func(pm_val, best_so_far):
@@ -1792,7 +1804,7 @@ class OptimizePipeline(PipelineMixin):
             test_data = None,
             metric_name: str = None,
             fit_on_all_train_data:bool = True,
-            lower_limit: Union[int, float] = -1.0,
+            lower_limit: Union[int, float] = None,
             upper_limit: Union[int, float] = None,
             figsize: tuple = None,
             show: bool = True,
@@ -1800,7 +1812,7 @@ class OptimizePipeline(PipelineMixin):
     ) -> plt.Axes:
         """
         Generate Dumbbell_ plot as comparison of baseline models with
-        optimized models. Not that this command will train all the considered models,
+        optimized models. Note that this command will train all the considered models,
         so this can be expensive.
 
         Parameters
@@ -1827,7 +1839,7 @@ class OptimizePipeline(PipelineMixin):
                 are training the model on all available training data
                 which is (training + validation) data. If False, then
                 model is trained only on training data.
-            lower_limit : float/int, optional (default=-1.0)
+            lower_limit : float/int, optional (default=None)
                 clip the values below this value. Set this value to None to avoid clipping.
             upper_limit : float/int, optional (default=None)
                 clip the values above this value
@@ -1864,6 +1876,11 @@ class OptimizePipeline(PipelineMixin):
         .. _Dumbbell:
             https://easy-mpl.readthedocs.io/en/latest/plots.html#easy_mpl.dumbbell_plot
         """
+        # todo:
+        #  baseline_results returns performance on test data while
+        #  get_best_pipelien_by_model returns performance on validation data
+        #  todo: they are not comparable
+
         metric_name = metric_name or self.eval_metric
 
         _, bl_results = self.baseline_results(x=x,
@@ -1902,16 +1919,16 @@ class OptimizePipeline(PipelineMixin):
 
         df.to_csv(os.path.join(self.path, f"dumbbell_{metric_name}_data.csv"))
 
-        baseline = df['baseline'].values
-
         if lower_limit:
-            baseline = np.where(baseline < lower_limit, lower_limit, baseline)
+            idx = df['baseline'] < lower_limit
+            df.loc[idx, 'baseline'] = lower_limit
 
         if upper_limit:
-            baseline = np.where(baseline > upper_limit, upper_limit, baseline)
+            idx = df['optimized'] > upper_limit
+            df.loc[idx, 'optimized'] = upper_limit
 
         fig, ax = plt.subplots(figsize=figsize)
-        ax = dumbbell_plot(baseline,
+        ax = dumbbell_plot(df['baseline'],
                            df['optimized'],
                            labels=labels,
                            show=False,
@@ -2403,10 +2420,12 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         if test_data is None:
             test_data = (None, None)
 
-        train_x, train_y, val_x, val_y, *test_data = self.verify_data(x,
-                                                                      y, data,
-                                                                      validation_data=None,
-                                                                      *test_data)
+        train_x, train_y, val_x, val_y, *test_data = self.verify_data(
+            x=x,
+            y=y,
+            data=data,
+            validation_data=None,
+            test_data=test_data)
 
         metric_name = metric_name or self.eval_metric
 
@@ -2479,9 +2498,11 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             test_data = (None, None)
 
         train_x, train_y, val_x, val_y, test_x, test_y = self.verify_data(
-            x, y, data,
+            x=x,
+            y=y,
+            data=data,
             validation_data=None,
-            *test_data,
+            test_data=test_data,
             save=True,
             save_name="from_scratch_all"
         )
@@ -2559,7 +2580,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             test_data = (None, None)
 
         train_x, train_y, val_x, val_y, test_x, test_y = self.verify_data(
-            x, y, 
+            x=x, y=y,
             data=data,
             validation_data=None,
             test_data=test_data,
@@ -2780,7 +2801,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         """
 
         train_x, train_y, val_x, val_y, test_x, test_y = self.verify_data(
-            x, y,  data,
+            x=x, y=y,  data=data,
             validation_data=None,
             test_data=test_data)
 
@@ -2988,7 +3009,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         else:
             ax = bar_chart(list(models.values()),
                            labels,
-                           ax_kws={'xlabel': metric_name},
+                           ax_kws={'xlabel': METRIC_NAMES.get(metric_name, metric_name)},
                            sort=True,
                            show=False,
                            **kwargs)
