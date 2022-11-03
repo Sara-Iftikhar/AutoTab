@@ -19,10 +19,10 @@ sys.path.insert(0, os.path.abspath('../..'))
 
 project = 'autotab'
 copyright = '2022, Sara Iftikhar'
-author = 'Sara Iftikhar'
+authors = 'Ather Abbas, Sara Iftikhar'
 
 # The full version, including alpha/beta/rc tags
-release = '0.1'
+release = '0.12'
 
 
 # -- General configuration ---------------------------------------------------
@@ -59,6 +59,16 @@ templates_path = ['_templates']
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = []
 
+# intersphinx configuration
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/{.major}'.format(
+        sys.version_info), None),
+    'numpy': ('https://docs.scipy.org/doc/numpy/', None),
+    'scipy': ('https://docs.scipy.org/doc/scipy/reference', None),
+    'matplotlib': ('https://matplotlib.org/', None),
+    'pandas': ('https://pandas.pydata.org/pandas-docs/stable/', None),
+    'sklearn': ('https://scikit-learn.org/stable/', None),
+}
 
 sphinx_gallery_conf = {
     'backreferences_dir': 'gen_modules/backreferences',
