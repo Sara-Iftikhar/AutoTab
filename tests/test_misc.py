@@ -60,6 +60,8 @@ class TestMisc(unittest.TestCase):
         pl.taylor_plot(data=rgr_data, save=False, show=self.show)
         pl.compare_models(show=self.show)
         pl.compare_models(plot_type="bar_chart", show=self.show)
+        pl.plot_convergence(save=False, show=self.show)
+        pl.plot_convergence(save=False, original=True, show=self.show)
         pl._pp_plots = []
         model = pl.bfe_best_model_from_scratch(metric_name='r2', data=rgr_data)
         assert isinstance(model, Model)

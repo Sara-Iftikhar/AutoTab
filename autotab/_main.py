@@ -8,7 +8,6 @@ import math
 import types
 import shutil
 import inspect
-import warnings
 from typing import Union
 from typing import Tuple
 from typing import Callable
@@ -22,10 +21,12 @@ import matplotlib.pyplot as plt
 from SeqMetrics import RegressionMetrics
 from SeqMetrics import ClassificationMetrics
 
+from easy_mpl import plot
 from easy_mpl import bar_chart
 from easy_mpl import taylor_plot
 from easy_mpl import dumbbell_plot
 from easy_mpl import circular_bar_plot
+from easy_mpl import parallel_coordinates
 
 import ai4water
 from ai4water import Model
@@ -54,6 +55,7 @@ from ai4water.hyperopt import Integer
 from ai4water.hyperopt import HyperOpt
 from ai4water.hyperopt import Categorical
 from ai4water.hyperopt.utils import to_skopt_space
+from ai4water.hyperopt.utils import plot_convergence
 
 from .utils import Callbacks, data_to_h5, data_to_csv
 
@@ -100,7 +102,7 @@ DEFAULT_TRANSFORMATIONS = [
     "minmax", "center", "scale", "zscore",
     "box-cox", "yeo-johnson",  "quantile", "quantile_normal",  "robust",
     "log", "log2", "log10", "sqrt",
-    "pareto", #"vast",
+    "pareto", "vast",
     "none",
               ]
 
@@ -167,7 +169,7 @@ class PipelineMixin(object):
             "log2": {'treat_negatives': True, 'replace_zeros': True},
             "log10": {'treat_negatives': True, 'replace_zeros': True},
             "sqrt": {'treat_negatives': True},
-            #"vast": {},
+            "vast": {},
             "pareto": {},
         }
 
@@ -3197,6 +3199,100 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             self._pp_plots.remove('murphy')
 
         return train_x, train_y, val_x, val_y, test_x, test_y
+
+    def plot_convergence(
+            self,
+            metric_name:str = None,
+            original:bool = False,
+            ax:plt.Axes = None,
+            save:bool = True,
+            show:bool = False,
+            **kwargs
+    ):
+        """
+        plots convergence of optimization.
+
+        parameters
+        -----------
+        metric_name : str
+            name of performance metric w.r.t which the convergence is to be shown
+        original : bool
+            whether to show the original convergence or only show the improvement
+        ax : plt.Axes
+            matplotlib Axes on which to draw the plot
+        save : bool
+        show : bool
+
+
+        returns
+        --------
+        plt.Axes
+        """
+
+        metric_name = metric_name or self.eval_metric
+
+        errors = os.path.join(self.path, "errors.csv")
+        serialized = os.path.join(self.path, "serialized.json")
+        if os.path.exists(errors):
+            df = pd.read_csv(errors)
+            y = df[metric_name]
+        elif os.path.exists(serialized):
+            serialized = os.path.join(self.path, "serialized.json")
+            with open(serialized, 'r') as fp:
+                results= json.load(fp)
+                y = results['func_vals']
+        else:
+            raise FileNotFoundError
+
+        _kwargs = {
+            "grid": True
+        }
+
+        if kwargs is None:
+            kwargs = dict()
+
+        _kwargs.update(kwargs)
+
+        plt.close('all')
+        if original:
+            ax = plot(y, '--.',
+                 xlabel="Number of calls $n$",
+                 ylabel=r"$\min f(x)$ after $n$ calls",
+                               show=False,
+                               **_kwargs)
+        else:
+            ax = plot_convergence(y, ax=ax, show=False, **_kwargs)
+
+        if save:
+            fname = os.path.join(self.path, "convergence.png")
+            plt.savefig(fname, dpi=300, bbox_inches='tight')
+
+        if show:
+            plt.show()
+
+        return ax
+
+    def parallel_coordinates(self):
+        x = []
+        y = []
+        for iter_sugges, iter_y in zip(self.parent_suggestions_.values(), self.val_scores_):
+            trans_x = [tr['method'] for tr in iter_sugges['x_transformation']]
+            trans_y = [tr['method'] for tr in iter_sugges['y_transformation']]
+            model = [model for model in iter_sugges['model']]
+
+            y.append(iter_y)
+            if len(trans_y) == 0:
+                trans_y = ['none']
+
+            x.append(trans_x + trans_y)
+
+            names = [tr['features'] for tr in iter_sugges['x_transformation']]
+
+        names = [item for sublist in names for item in sublist]
+
+        df = pd.DataFrame(x, columns=names + self.output_features)
+
+        return parallel_coordinates(df, categories=y, figsize=(20, 6))
 
 
 def combine_train_val(train_x, train_y, validation_data):
