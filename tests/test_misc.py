@@ -7,6 +7,7 @@ import unittest
 
 from autotab import OptimizePipeline
 from autotab.utils import Callbacks
+from ai4water import Model
 from ai4water.preprocessing import DataSet
 
 from utils import run_basic, build_basic, rgr_data, make_kws
@@ -55,6 +56,13 @@ class TestMisc(unittest.TestCase):
 
         pl2 = OptimizePipeline.from_config_file(os.path.join(pl.path, "config.json"))
         pl2.post_fit(data=rgr_data, show=self.show)
+        pl.dumbbell_plot(data=rgr_data, save=False, upper_limit=1e15, show=self.show)
+        pl.taylor_plot(data=rgr_data, save=False, show=self.show)
+        pl.compare_models(show=self.show)
+        pl.compare_models(plot_type="bar_chart", show=self.show)
+        pl._pp_plots = []
+        model = pl.bfe_best_model_from_scratch(metric_name='r2', data=rgr_data)
+        assert isinstance(model, Model)
         return
 
     def test_from_config_xy(self):
@@ -110,7 +118,7 @@ class TestMisc(unittest.TestCase):
         pl.post_fit(data=rgr_data, show=self.show)
         pl.cleanup()
         return
-    #
+
     def test_no_model(self):
 
         pl = OptimizePipeline(input_features=['a'], output_features="", models=[])
@@ -258,7 +266,6 @@ class TestMisc(unittest.TestCase):
                 # box-cox is removed for tide_cm, it should be in output space
                 assert 'box-cox' in sp.categories, f"{sp.name}"
         return
-
 
 
 if __name__ == "__main__":

@@ -20,7 +20,7 @@ print(data.head())
 kws = {
 'inputs_to_transform': data.columns.tolist()[0:-1],
 'outputs_to_transform': data.columns.tolist()[-1:],
-'parent_iterations': 10,
+'parent_iterations': 100,
 'child_iterations': 0,  # don't optimize hyperparamters only for demonstration
 'parent_algorithm': 'bayes',
 'child_algorithm': 'random',
@@ -56,7 +56,8 @@ with OptimizePipeline(**kws) as pl:
 
 ##############################################
 
-# plot the convergence plot to illustrate how much improvement occurred w.r.t evaluation metric
+# plot the convergence plot to illustrate how much improvement occurred w.r.t
+# evaluation metric
 
 pl.optimizer_._plot_convergence(save=False, grid=True)
 
@@ -125,6 +126,7 @@ model = pl.be_best_model_from_config(data=data, metric_name="r2_score")
 
 # %%
 model.evaluate_on_test_data(data=data, metrics="r2_score")
+
 # %%
 model = pl.bfe_best_model_from_scratch(metric_name='r2_score', data=data)
 

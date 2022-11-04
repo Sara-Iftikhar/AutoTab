@@ -1364,10 +1364,11 @@ class OptimizePipeline(PipelineMixin):
             val_metric: str,
             x_transformation,
             y_transformation,
-            prefix: Union[str, None],
+            prefix: Union[str, None] = None,
             verbosity:int = 0,
             batch_size:int = 32,
             lr:float = 0.001,
+            path = None,
     ) -> Model:
         """
         build the ai4water Model. When overwriting this method, the user
@@ -1379,13 +1380,18 @@ class OptimizePipeline(PipelineMixin):
                 anything which can be fed to AI4Water's Model class.
             val_metric :
             x_transformation :
+                transformation on input data
             y_transformation :
+                transformation on output data
             prefix :
-            verbosity :
-            batch_size :
+            verbosity : int
+                level of output
+            batch_size : int
                 only used when category is "DL".
             lr :
                 only used when category is "DL"
+            path : str
+                path where to save the model
 
         .. Model:
             https://ai4water.readthedocs.io/en/master/model.html#ai4water._main.BaseModel
@@ -1404,6 +1410,7 @@ class OptimizePipeline(PipelineMixin):
             prefix=prefix,
             batch_size=int(batch_size),
             lr=float(lr),
+            path = path,
             **self.model_kwargs
         )
 
@@ -1762,7 +1769,7 @@ class OptimizePipeline(PipelineMixin):
                 model = self.build_model(
                     model=model_config,
                     val_metric=self.eval_metric,
-                    prefix=f"{self.parent_prefix_}{SEP}baselines",
+                    path = os.path.join(self.path, "baselines", f"{model_name}_{dateandtime_now()}"),
                     x_transformation=None,
                     y_transformation=None
                 )
