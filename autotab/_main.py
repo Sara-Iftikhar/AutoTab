@@ -3089,9 +3089,15 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                 self.metrics_.at[self.parent_iter_, _metric] = pm
 
                 func = compare_func1(METRIC_TYPES[_metric])
-                best_so_far = func(self.metrics_best_.loc[:self.parent_iter_, _metric])
 
-                best_so_far = fill_val(METRIC_TYPES[_metric], best_so_far)
+                pm_until_this_iter = self.metrics_best_.loc[:self.parent_iter_, _metric]
+
+                if pm_until_this_iter.isna().sum() == pm_until_this_iter.size:
+                    best_so_far = fill_val(METRIC_TYPES[_metric], np.nan)
+                else:
+                    best_so_far = func(self.metrics_best_.loc[:self.parent_iter_, _metric])
+
+                    best_so_far = fill_val(METRIC_TYPES[_metric], best_so_far)
 
                 func = compare_func(METRIC_TYPES[_metric])
                 if func(pm, best_so_far):
@@ -3378,5 +3384,5 @@ def fill_val(metric_type:str, best_so_far):
     if math.isfinite(best_so_far):
         return best_so_far
     if metric_type == "min":
-        return 99999999999999
-    return -9999999999
+        return 99999999999999.0
+    return -9999999999.0
