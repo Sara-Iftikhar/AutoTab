@@ -176,7 +176,7 @@ class PipelineMixin(object):
         self.feature_transformations = {}
         for feat in self.all_features:
             default_feat_trans = self._transformations_methods
-            if self.input_transformations is not None:
+            if self.input_transformations is not None and feat in self.input_features:
                 # It is possible that the
                 # user has specified `input_transformtions` argument. In that case
                 # use only those from feat_trans (default) which are in `input_transformations`
@@ -1505,7 +1505,14 @@ class OptimizePipeline(PipelineMixin):
             getattr(cbk, 'on_fit_begin')(x=train_x, y=train_y, validation_data=validation_data)
 
         # train the model and evaluate it to calculate val_score
-        model.fit(x=train_x, y=train_y)
+
+        if self.category == "DL":
+            # DL models employ early stopping based upon performance on validation data
+            # without monitoring validation loss, training is useless because we can't tell whether
+            # the fitted model is overfitted or not.
+            model.fit(x=train_x, y=train_y, validation_data=validation_data)
+        else:
+            model.fit(x=train_x, y=train_y)
 
         for cbk in callbacks:
             getattr(cbk, 'on_fit_end')(x=train_x, y=train_y, validation_data=validation_data)
