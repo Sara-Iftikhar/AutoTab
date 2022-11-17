@@ -527,6 +527,13 @@ class OptimizePipeline(PipelineMixin):
         # information about transformations which are to be modified
         self._tr_modifications = {}
 
+    def get_np_errstate(self):
+        default = {'divide':'ignore','over':'ignore','under':'ignore','invalid':'ignore'}
+        return getattr(self, 'np_errstate', default)
+
+    def set_np_errstate(self, value:dict):
+        return setattr(self, 'np_errstate', value)
+
     def __enter__(self):
         return self
 
@@ -1215,7 +1222,6 @@ class OptimizePipeline(PipelineMixin):
         # fit the model with optimized hyperparameters and suggested transformations
         _model = self.build_model(
             model=model_config,
-            val_metric=self.eval_metric,
             x_transformation=x_trnas,
             y_transformation=y_trans,
             prefix=f"{self.parent_prefix_}{SEP}{self.CHILD_PREFIX}",
@@ -1286,7 +1292,6 @@ class OptimizePipeline(PipelineMixin):
             # build child model
             _model = self.build_model(
                 model=model_config,
-                val_metric=self.eval_metric,
                 x_transformation=x_transformations,
                 y_transformation=y_transformations,
                 prefix=f"{self.parent_prefix_}{SEP}{self.CHILD_PREFIX}",
@@ -1363,7 +1368,6 @@ class OptimizePipeline(PipelineMixin):
     def build_model(
             self,
             model,
-            val_metric: str,
             x_transformation,
             y_transformation,
             prefix: Union[str, None] = None,
@@ -1380,7 +1384,6 @@ class OptimizePipeline(PipelineMixin):
         ----------
             model :
                 anything which can be fed to AI4Water's Model class.
-            val_metric :
             x_transformation :
                 transformation on input data
             y_transformation :
@@ -1405,7 +1408,7 @@ class OptimizePipeline(PipelineMixin):
         model = Model(
             model=model,
             verbosity=verbosity,
-            val_metric=val_metric,
+            val_metric=self.eval_metric,
             x_transformation=x_transformation,
             y_transformation=y_transformation,
             # seed=self.seed,
@@ -1777,7 +1780,6 @@ class OptimizePipeline(PipelineMixin):
                 # build model
                 model = self.build_model(
                     model=model_config,
-                    val_metric=self.eval_metric,
                     path = os.path.join(self.path, "baselines", f"{model_name}_{dateandtime_now()}"),
                     x_transformation=None,
                     y_transformation=None
@@ -2136,11 +2138,11 @@ class OptimizePipeline(PipelineMixin):
 
     def metric_report(self, metric_name: str) -> str:
         """report with respect to one performance metric"""
-        metric_val_ = self.get_best_metric(metric_name)
-
+        
         if self.parent_iter_ == 0:
             rep = 'Stopped at first iteration'
         else:
+            metric_val_ = self.get_best_metric(metric_name)
             best_model_name = list(self.get_best_pipeline_by_metric(metric_name)['model'].keys())[0]
 
             rep = f"""
@@ -2394,6 +2396,88 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         """
         return cls(**config['init_paras'])
 
+    def refit_pipeline(
+            self,
+            x=None,
+            y=None,
+            data=None,
+            test_data: Union[tuple, list] = None,
+            metric_name: str = None,
+            model_name: str = None,
+    )->Model:
+
+        if test_data is None:
+            test_data = (None, None)
+
+        train_x, train_y, val_x, val_y, test_x, test_y = self.verify_data(
+            x=x,
+            y=y,
+            data=data,
+            validation_data=None,
+            test_data=test_data,
+            save=True,
+            save_name="from_scratch"
+        )
+
+        pipeline = self.get_best_pipeline(metric_name, model_name)
+
+        model = self.build_model(
+            model=pipeline['model'],
+            x_transformation=pipeline['x_transformation'],
+            y_transformation=pipeline['y_transformation']
+        )
+
+        x, y = combine_train_val(train_x, train_y, (val_x, val_y))
+        model.fit(x, y)
+
+        return model
+
+    def evaluate_pipeline(
+            self,
+            x = None,
+            y = None,
+            metric_name: str = None,
+            model_name: str = None,
+
+    )->Model:
+        """
+        Evaluates the pipeline
+
+        parameters
+        ----------
+        x :
+        y :
+        metric_name :
+        model_name :
+
+
+        Returns
+        --------
+        Model
+        """
+        pipeline = self.get_best_pipeline(metric_name, model_name)
+
+        cpath = os.path.join(pipeline['path'], "config.json")
+        model = self.build_model_from_config(cpath)
+        wpath = os.path.join(pipeline['path'], "weights")
+        model.verbosity = 1
+        model.update_weights(os.path.join(wpath, find_best_weight(wpath)))
+
+        print(model.evaluate(x=x, y=y, metrics="nse"))
+
+        return model
+
+    def get_best_pipeline(self, metric_name:str=None, model_name:str=None)->dict:
+        """finds best pipeline"""
+        metric_name = metric_name or self.eval_metric
+
+        if model_name:
+            _, pipeline = self.get_best_pipeline_by_model(model_name, metric_name)
+        else:
+            pipeline = self.get_best_pipeline_by_metric(metric_name=metric_name)
+
+        return pipeline
+
     def be_best_model_from_config(
             self,
             x=None,
@@ -2443,12 +2527,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             validation_data=None,
             test_data=test_data)
 
-        metric_name = metric_name or self.eval_metric
-
-        if model_name:
-            _, pipeline = self.get_best_pipeline_by_model(model_name, metric_name)
-        else:
-            pipeline = self.get_best_pipeline_by_metric(metric_name=metric_name)
+        pipeline = self.get_best_pipeline(metric_name, model_name)
 
         cpath = os.path.join(pipeline['path'], "config.json")
         if verbosity:
@@ -2672,7 +2751,6 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             x_transformation=x_transformation,
             y_transformation=y_transformation,
             prefix=prefix,
-            val_metric=self.eval_metric,
             verbosity=verbosity
         )
 
@@ -3063,6 +3141,9 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         if self.mode=="classification":
             t = np.argmax(t, axis=1)
             p = np.argmax(p, axis=1)
+
+        # 32 bit float can cause overflow when calculating some metrics
+        p = p.astype(np.float64)
 
         errors = self.Metrics(
             t,
