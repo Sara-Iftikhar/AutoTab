@@ -51,7 +51,7 @@ class TestMLRegression(unittest.TestCase):
         model = pl.build_model(model=pipeline['model'],
                                 x_transformation=pipeline['x_transformation'],
                                 y_transformation=pipeline['y_transformation'],
-                                val_metric='r2_score',
+                                #eval_metric='r2_score',
                                 prefix=None,
                                 )
 

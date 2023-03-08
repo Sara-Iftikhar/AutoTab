@@ -113,7 +113,7 @@ class TestRegression(unittest.TestCase):
                        process_results=False
                        )
         ax = pl.dumbbell_plot(data=rgr_data, metric_name='r2', show=self.show)
-        assert isinstance(ax, plt.Axes)
+        assert isinstance(ax, plt.Axes), ax
         pl.cleanup()
         return
 

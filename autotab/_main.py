@@ -8,6 +8,7 @@ import math
 import types
 import shutil
 import inspect
+import warnings
 from typing import Union
 from typing import Tuple
 from typing import Callable
@@ -30,6 +31,8 @@ from easy_mpl import parallel_coordinates
 
 import ai4water
 from ai4water import Model
+
+from ai4water.backend import plotly, hyperopt, skopt
 
 from ai4water.models import MLP
 from ai4water.models import CNN
@@ -56,6 +59,9 @@ from ai4water.hyperopt import HyperOpt
 from ai4water.hyperopt import Categorical
 from ai4water.hyperopt.utils import to_skopt_space
 from ai4water.hyperopt.utils import plot_convergence
+from ai4water.hyperopt.utils import plot_hyperparameters
+from ai4water.hyperopt.utils import loss_histogram
+from ai4water.hyperopt.utils import plot_convergences
 
 from .utils import Callbacks, data_to_h5, data_to_csv
 
@@ -1020,7 +1026,7 @@ class OptimizePipeline(PipelineMixin):
 
         self.metrics_ = pd.DataFrame(
             np.full((self.parent_iterations, len(self.monitor)), np.nan),
-            columns=self.monitor
+            columns=self.monitor_names
         )
 
         self.parent_iter_ = 0
@@ -1028,7 +1034,7 @@ class OptimizePipeline(PipelineMixin):
         self.val_scores_ = np.full(self.parent_iterations, np.nan)
 
         metrics_best = np.full((self.parent_iterations, len(self.monitor)), np.nan)
-        self.metrics_best_ = pd.DataFrame(metrics_best, columns=self.monitor)
+        self.metrics_best_ = pd.DataFrame(metrics_best, columns=self.monitor_names)
 
         self.parent_seeds_ = np.random.randint(0, 10000, self.parent_iterations)
         self.child_seeds_ = np.random.randint(0, 10000, self.max_child_iters)
@@ -1066,11 +1072,30 @@ class OptimizePipeline(PipelineMixin):
         formatter = "{:<5} {:<18} " + "{:<15} " * (len(self.monitor))
         print(formatter.format(
             "Iter",
-            self.eval_metric,
-            *self.monitor)
+            self.eval_metric_name,
+            *self.monitor_names)
         )
 
         return
+
+    @property
+    def eval_metric_name(self)->str:
+        if isinstance(self.eval_metric, str):
+            return self.eval_metric
+        elif callable(self.eval_metric):
+            return self.eval_metric.__name__
+        else:
+            return str(self.eval_metric)
+
+    @property
+    def monitor_names(self)->List[str]:
+        names = []
+        for pm in self.monitor:
+            if callable(pm):
+                names.append(pm.__name__)
+            else:
+                names.append(str(pm))
+        return names
 
     def fit(
             self,
@@ -1122,18 +1147,18 @@ class OptimizePipeline(PipelineMixin):
 
         self.reset()
 
-        parent_opt = HyperOpt(
+        optimizer = HyperOpt(
             self.parent_algorithm,
             param_space=self.space(),
             objective_fn=self.parent_objective,
             num_iterations=self.parent_iterations,
             opt_path=self.path,
             verbosity = 0,
-            process_results=process_results,
+            process_results=False,
         )
 
         if previous_results is not None:
-            parent_opt.add_previous_results(previous_results)
+            optimizer.add_previous_results(previous_results)
 
         if callbacks is None:
             callbacks = [Callbacks()]
@@ -1149,9 +1174,12 @@ class OptimizePipeline(PipelineMixin):
 
         setattr(self, 'callbacks_', callbacks)
 
-        res = parent_opt.fit(x=train_x, y=train_y, validation_data = (val_x, val_y))
+        res = optimizer.fit(x=train_x, y=train_y, validation_data = (val_x, val_y))
 
-        setattr(self, 'optimizer_', parent_opt)
+        if process_results:
+            self._proces_hpo_results(optimizer)
+
+        setattr(self, 'optimizer_', optimizer)
 
         self.save_results()
 
@@ -1160,6 +1188,70 @@ class OptimizePipeline(PipelineMixin):
         self._save_config()
 
         return res
+
+    def _proces_hpo_results(self, optimizer):
+        """
+        postprocessing of hpo results
+        """
+
+        from optuna.visualization import plot_contour
+
+        optimizer.save_iterations_as_xy()
+
+        optimizer.plot_parallel_coords()
+
+        # deep learning related results
+        if self.category == "DL":
+            plot_convergences(
+                optimizer.opt_path,
+                what='val_loss',
+                ylabel='Validation MSE')
+            plot_convergences(
+                optimizer.opt_path,
+                what='loss',
+                ylabel='MSE',
+                leg_pos="upper right")
+
+        optimizer._plot_edf()
+
+        # distributions/historgrams of explored hyperparameters
+        optimizer._plot_distributions(show=False)
+
+        # convergence plot,
+        #if sr.x_iters is not None and self.backend != "skopt": # todo
+        optimizer._plot_convergence(show=False)
+
+        # plot of hyperparameter space as explored by the optimizer
+        if optimizer.backend != 'skopt' and len(self.space()) < 20 and skopt is not None:
+            optimizer._plot_evaluations()
+
+        if len(optimizer.best_paras(True))>1:
+            plt.close('all')
+            try:
+                optimizer.plot_importance()
+                plt.close('all')
+                optimizer.plot_importance(plot_type="bar", show=False)
+            except (RuntimeError, AttributeError, ValueError):
+                warnings.warn(f"Error encountered during fanova calculation")
+
+        if optimizer.backend == 'hyperopt':
+            loss_histogram([y for y in optimizer.trials.losses()],
+                           save=True,
+                           fname=os.path.join(optimizer.opt_path, "loss_histogram.png")
+                           )
+            plot_hyperparameters(
+                optimizer.trials,
+                fname=os.path.join(optimizer.opt_path, "hyperparameters.png"),
+                save=True)
+
+        if plotly is not None:
+
+            if optimizer.backend == 'optuna':
+
+                fig = plot_contour(optimizer.study)
+                plotly.offline.plot(fig, filename=os.path.join(optimizer.opt_path, 'contours.html'),
+                                    auto_open=False)
+        return
 
     def parent_objective(
             self,
@@ -1214,7 +1306,7 @@ class OptimizePipeline(PipelineMixin):
                     kwargs[arg] = opt_paras.pop(arg)
             model_config = DL_MODELS[model](mode=self.mode,
                                             input_shape=self.input_shape,
-                                            output_features=self.num_outputs,
+                                            num_outputs=self.num_outputs,
                                             **opt_paras)
         else:
             model_config = {model: opt_paras}
@@ -1252,7 +1344,10 @@ class OptimizePipeline(PipelineMixin):
 
         self.val_scores_[self.parent_iter_] = val_score
 
-        _val_score = val_score if np.less_equal(val_score, np.nanmin(self.val_scores_[:self.parent_iter_+1 ])) else ''
+        if np.less_equal(val_score, np.nanmin(self.val_scores_[:self.parent_iter_+1 ])):
+            _val_score = val_score
+        else:
+            _val_score = ''
 
         # print the metrics being monitored
         # we fill the nan in metrics_best_ with '' so that it does not gen printed
@@ -1284,7 +1379,7 @@ class OptimizePipeline(PipelineMixin):
             if self.category == "DL":
                 model_config = DL_MODELS[model](mode=self.mode,
                                                 input_shape=self.input_shape,
-                                                output_features=self.num_outputs,
+                                                num_outputs=self.num_outputs,
                                                 **suggestions)
             else:
                 model_config = {model: suggestions}
@@ -1320,7 +1415,8 @@ class OptimizePipeline(PipelineMixin):
         # make space
         child_space = self.model_space[model]['param_space'] + self.batch_space + self.lr_space
 
-        self.child_iter_ = 0  # before starting child hpo, reset iteration counter
+        # before starting child hpo, reset iteration counter
+        setattr(self, "child_iter_", 0)
 
         optimizer = HyperOpt(
             self.child_algorithm,
@@ -1505,14 +1601,15 @@ class OptimizePipeline(PipelineMixin):
     )->float:
         """fits the model and evaluates"""
         for cbk in callbacks:
-            getattr(cbk, 'on_fit_begin')(x=train_x, y=train_y, validation_data=validation_data)
+            getattr(cbk, 'on_fit_begin')(
+                x=train_x, y=train_y, validation_data=validation_data)
 
         # train the model and evaluate it to calculate val_score
 
         if self.category == "DL":
             # DL models employ early stopping based upon performance on validation data
-            # without monitoring validation loss, training is useless because we can't tell whether
-            # the fitted model is overfitted or not.
+            # without monitoring validation loss, training is useless because
+            # we can't tell whether the fitted model is overfitted or not.
             model.fit(x=train_x, y=train_y, validation_data=validation_data)
         else:
             model.fit(x=train_x, y=train_y)
@@ -1568,7 +1665,7 @@ class OptimizePipeline(PipelineMixin):
         float
             the best value of performance metric achieved
         """
-        if metric_name not in self.monitor:
+        if metric_name not in self.monitor_names:
             raise MetricNotMonitored(metric_name, self.monitor)
 
         if METRIC_TYPES[metric_name] == "min":
@@ -1596,8 +1693,8 @@ class OptimizePipeline(PipelineMixin):
 
         metric_name = metric_name or self.eval_metric
 
-        if metric_name not in self.monitor:
-            raise MetricNotMonitored(metric_name, self.monitor)
+        if metric_name not in self.monitor_names:
+            raise MetricNotMonitored(metric_name, self.monitor_names)
 
         if METRIC_TYPES[metric_name] == "min":
             idx = np.nanargmin(self.metrics_[metric_name].values)
@@ -1678,8 +1775,8 @@ class OptimizePipeline(PipelineMixin):
         metric_name = metric_name or self.eval_metric
 
         # checks if the given metric is a valid metric or not
-        if metric_name not in self.monitor:
-            raise MetricNotMonitored(metric_name, self.monitor)
+        if metric_name not in self.monitor_names:
+            raise MetricNotMonitored(metric_name, self.monitor_names)
 
         # initialize an empty dictionary to store model parameters
         model_container = {}
@@ -1764,7 +1861,7 @@ class OptimizePipeline(PipelineMixin):
         if self.baseline_results_ is None:
 
             if self.callbacks_ is None:
-                self.callbacks_ = [Callbacks()]
+                setattr(self, "callbacks_",[Callbacks()])
 
             val_scores = {}
             metrics = {}
@@ -1773,9 +1870,10 @@ class OptimizePipeline(PipelineMixin):
 
                 model_config = model_name
                 if self.category == "DL":
-                    model_config = DL_MODELS[model_name](mode=self.mode,
-                                                         input_shape=self.input_shape,
-                                                         output_features=self.num_outputs)
+                    model_config = DL_MODELS[model_name](
+                        mode=self.mode,
+                        input_shape=self.input_shape,
+                        num_outputs=self.num_outputs)
 
                 # build model
                 model = self.build_model(
@@ -1796,8 +1894,11 @@ class OptimizePipeline(PipelineMixin):
                 val_scores[model_name] = getattr(errors, self.eval_metric)(**METRICS_KWARGS.get(self.eval_metric, {}))
 
                 _metrics = {}
-                for m in self.monitor:
-                    _metrics[m] = getattr(errors, m)(**METRICS_KWARGS.get(m, {}))
+                for m, mn in zip(self.monitor, self.monitor_names):
+                    if callable(m):
+                        _metrics[mn] = m(t,p)
+                    else:
+                        _metrics[mn] = getattr(errors, m)(**METRICS_KWARGS.get(m, {}))
                 metrics[model_name] = _metrics
 
             results = {
@@ -1946,12 +2047,12 @@ class OptimizePipeline(PipelineMixin):
             df.loc[idx, 'optimized'] = upper_limit
 
         fig, ax = plt.subplots(figsize=figsize)
-        ax = dumbbell_plot(df['baseline'],
+        ax, _, _ = dumbbell_plot(df['baseline'],
                            df['optimized'],
                            labels=labels,
                            show=False,
-                           xlabel=metric_name,
-                           ylabel="Models",
+                           ax_kws=dict(xlabel=metric_name,
+                           ylabel="Models"),
                            ax=ax
                            )
 
@@ -2105,7 +2206,7 @@ class OptimizePipeline(PipelineMixin):
         -------
         None
         """
-        self.end_time_ = time.asctime()
+        setattr(self, "end_time_", time.asctime())
 
         # results are only available if fit has been run.
         if hasattr(self, 'parent_iter_'):
@@ -2179,7 +2280,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         if hasattr(self, 'exc_type_'):
             text += f"Execution was stopped due to {str(self.exc_type_)} with {str(self.exc_val_)}"
 
-        for metric in self.monitor:
+        for metric in self.monitor_names:
             text += self.metric_report(metric)
 
         if write:
@@ -2707,7 +2808,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
             model_config = DL_MODELS[model_name](mode=self.mode,
                                                  input_shape=self.input_shape,
-                                                 output_features=self.num_outputs,
+                                                 num_outputs=self.num_outputs,
                                                  **kwargs)
 
         model = self._build_and_eval_from_scratch(
@@ -2918,7 +3019,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
                 model_config = DL_MODELS[model_name](mode=self.mode,
                                                      input_shape=self.input_shape,
-                                                     output_features=self.num_outputs,
+                                                     num_outputs=self.num_outputs,
                                                      **kwargs)
             _ = self._build_and_eval_from_scratch(
                 model=model_config,
@@ -3121,7 +3222,7 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             self,
             model: Model,
             data:tuple,
-            metric: str,
+            metric: Union[str, Callable],
             callbacks:list,
             eval_metrics=False
     ) -> float:
@@ -3151,8 +3252,11 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             remove_zero=True,
             remove_neg=True,
             multiclass=model.is_multiclass_)
-
-        val_score = getattr(errors, metric)()
+        
+        if callable(metric):
+            val_score = metric(t, p)
+        else:    
+            val_score = getattr(errors, metric)()
 
         metric_type = METRIC_TYPES.get(metric, 'min')
 
@@ -3171,26 +3275,29 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         if eval_metrics:
             # calculate all additional performance metrics which are being monitored
 
-            for _metric in self.monitor:
-                pm = getattr(errors, _metric)(**METRICS_KWARGS.get(_metric, {}))
+            for _metric, metric_name in zip(self.monitor, self.monitor_names):
+                if callable(_metric):
+                    pm = _metric(t,p)
+                else:
+                    pm = getattr(errors, _metric)(**METRICS_KWARGS.get(_metric, {}))
 
-                self.metrics_.at[self.parent_iter_, _metric] = pm
+                self.metrics_.at[self.parent_iter_, metric_name] = pm
 
-                func = compare_func1(METRIC_TYPES[_metric])
+                func = compare_func1(METRIC_TYPES[metric_name])
 
-                pm_until_this_iter = self.metrics_best_.loc[:self.parent_iter_, _metric]
+                pm_until_this_iter = self.metrics_best_.loc[:self.parent_iter_, metric_name]
 
                 if pm_until_this_iter.isna().sum() == pm_until_this_iter.size:
-                    best_so_far = fill_val(METRIC_TYPES[_metric], np.nan)
+                    best_so_far = fill_val(METRIC_TYPES[metric_name], np.nan)
                 else:
-                    best_so_far = func(self.metrics_best_.loc[:self.parent_iter_, _metric])
+                    best_so_far = func(self.metrics_best_.loc[:self.parent_iter_, metric_name])
 
-                    best_so_far = fill_val(METRIC_TYPES[_metric], best_so_far)
+                    best_so_far = fill_val(METRIC_TYPES[metric_name], best_so_far)
 
-                func = compare_func(METRIC_TYPES[_metric])
+                func = compare_func(METRIC_TYPES[metric_name])
                 if func(pm, best_so_far):
 
-                    self.metrics_best_.at[self.parent_iter_, _metric] = pm
+                    self.metrics_best_.at[self.parent_iter_, metric_name] = pm
 
         for cbk in callbacks:
             getattr(cbk, 'on_eval_end')(model, self.parent_iter_, x=None, y=None, validation_data=data)
@@ -3250,6 +3357,9 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         else:
             assert y is not None, f"if x is given, corresponding y must also be given"
+            if isinstance(y, (pd.DataFrame, pd.Series)):
+                y = y.values
+
             assert isinstance(y, np.ndarray)
             assert num_examples(x) == num_examples(y)
 
@@ -3274,10 +3384,17 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                 assert isinstance(validation_data, (tuple, list)), msg
                 msg = f"Validation_data tuple must have length 2 but it has {len(validation_data)}"
                 assert len(validation_data) == 2, msg
-                assert isinstance(validation_data[1], np.ndarray), f"second value in Validation data must be ndarray"
+                msg1 = f"second value in Validation data must be ndarray"
+                assert isinstance(validation_data[1], (np.ndarray, pd.Series, pd.DataFrame)), msg1
                 assert num_examples(validation_data[0]) == num_examples(validation_data[1])
+                    
                 train_x, train_y = x, y
+                if isinstance(train_y, (pd.DataFrame, pd.Series)):
+                    train_y = train_y.values
+
                 val_x, val_y = validation_data
+                if isinstance(val_y, (pd.DataFrame, pd.Series)):
+                    val_y = val_y.values
 
         if save:
             try:
@@ -3292,7 +3409,18 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         if train_x.ndim > 2 and 'murphy' in self._pp_plots:
             self._pp_plots.remove('murphy')
 
+        train_y = self._verify_ouput_shape(train_y)
+        val_y = self._verify_ouput_shape(val_y)
+        test_y = self._verify_ouput_shape(test_y)
+
         return train_x, train_y, val_x, val_y, test_x, test_y
+
+    def _verify_ouput_shape(self, outputs):
+        if outputs is not None:
+            if self.mode == 'classification' and self.category == "DL":
+                if self.num_classes == 2:
+                    outputs = np.argmax(outputs, 1).reshape(-1, 1)
+        return outputs
 
     def plot_convergence(
             self,
@@ -3339,7 +3467,6 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             raise FileNotFoundError
 
         _kwargs = {
-            "grid": True
         }
 
         if kwargs is None:
@@ -3350,8 +3477,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         plt.close('all')
         if original:
             ax = plot(y, '--.',
-                 xlabel="Number of calls $n$",
-                 ylabel=r"$\min f(x)$ after $n$ calls",
+                 ax_kws=dict(xlabel="Number of calls $n$",
+                 ylabel=r"$\min f(x)$ after $n$ calls"),
                                show=False,
                                **_kwargs)
         else:

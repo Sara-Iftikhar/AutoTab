@@ -16,6 +16,7 @@ class TestMisc(unittest.TestCase):
             "MLP",
         ],
             parent_iterations=10,
+            input_transformations=['minmax', 'zscore'],
             outputs_to_transform=["tetx_coppml"],
             child_iterations=0,
             epochs=20,
