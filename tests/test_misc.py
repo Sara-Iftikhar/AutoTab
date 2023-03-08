@@ -1,7 +1,8 @@
 import warnings
 def warn(*args, **kwargs): pass
 warnings.warn = warn
-
+import site
+site.addsitedir("D:\\mytools\\AI4Water")
 import os
 import unittest
 
@@ -267,6 +268,19 @@ class TestMisc(unittest.TestCase):
             if sp.name not in  ["tide_cm", 'model']:
                 # box-cox is removed for tide_cm, it should be in output space
                 assert 'box-cox' in sp.categories, f"{sp.name}"
+        return
+
+    def test_attribute_not_set(self):
+        pl = build_basic(
+            eval_metric="r2",
+            child_iterations=0,
+            parent_iterations=3,
+            parent_algorithm="random",
+        )
+        try:
+            pl.metrics_
+        except AttributeError:
+            pass
         return
 
 

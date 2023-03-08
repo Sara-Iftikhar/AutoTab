@@ -9,12 +9,13 @@ import types
 import shutil
 import inspect
 import warnings
+from typing import List
 from typing import Union
 from typing import Tuple
 from typing import Callable
-from typing import List
 from collections import OrderedDict
 from collections import defaultdict
+from weakref import WeakKeyDictionary
 
 import numpy as np
 import pandas as pd
@@ -73,7 +74,6 @@ assert ai4water.__version__ >= "1.06", f"""
 
 
 # TODO's
-# custom metric
 # custom model which is installed/not installed
 
 # in order to unify the use of metrics
@@ -138,7 +138,40 @@ METRIC_NAMES = {
 }
 
 
+class AttributeNotSetYet:
+    def __init__(self):
+        self.data = WeakKeyDictionary()
+
+    def __get__(self, instance, owner):
+        raise AttributeError("""
+        The pipeline has not been fitted yet. 
+        You must first call .fit method to get {}
+        """.format(self.name))
+
+    def __set_name__(self, owner, name):
+        self.name = name
+
+
 class PipelineMixin(object):
+    # following attributes are set duirng .fit call
+    # so they must not be accessed before calling .fit
+    # Following makes sure that a proper error is raised for the user
+    # if he/she tries to access them before calling .fit first
+    parent_prefix_ = AttributeNotSetYet()
+    metrics_ = AttributeNotSetYet()
+    parent_iter_ = AttributeNotSetYet()
+    child_iter_ = AttributeNotSetYet()
+    val_scores_ = AttributeNotSetYet()
+    metrics_best_ = AttributeNotSetYet()
+    parent_seeds_ = AttributeNotSetYet()
+    child_seeds_ = AttributeNotSetYet()
+    child_val_scores_ = AttributeNotSetYet()
+    baseline_results_ = AttributeNotSetYet()
+    start_time_ = AttributeNotSetYet()
+    parent_suggestions_ = AttributeNotSetYet()
+    callbacks_ = AttributeNotSetYet()
+    taylor_plot_data_ = AttributeNotSetYet()
+    child_callbacks_ = AttributeNotSetYet()
 
     def __init__(
             self,
@@ -942,7 +975,8 @@ class OptimizePipeline(PipelineMixin):
             new_behavior:dict,
             features:Union[list, str] = None
     )->None:
-        """change the behvior of a transformation i.e. the way it is applied.
+        """
+        change the behvior of a transformation i.e. the way it is applied.
         If ``features`` is not not given, it will modify the behavior of transformation
         for all features. This function modifies the ``feature_transformations``
         attribute of the class.
@@ -3240,11 +3274,15 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             p = p.reshape(-1, 1)  # TODO, for cls, Metrics do not accept (n,) array
 
         if self.mode=="classification":
-            t = np.argmax(t, axis=1)
-            p = np.argmax(p, axis=1)
+            # if array has shape (n,1)/(n,) then we should not do
+            # np.argmax
+            if len(t) != t.size:
+               t = np.argmax(t, axis=1)
+               p = np.argmax(p, axis=1)
+        else:
 
-        # 32 bit float can cause overflow when calculating some metrics
-        p = p.astype(np.float64)
+            # 32 bit float can cause overflow when calculating some metrics
+            p = p.astype(np.float64)
 
         errors = self.Metrics(
             t,
@@ -3409,16 +3447,18 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         if train_x.ndim > 2 and 'murphy' in self._pp_plots:
             self._pp_plots.remove('murphy')
 
-        train_y = self._verify_ouput_shape(train_y)
-        val_y = self._verify_ouput_shape(val_y)
-        test_y = self._verify_ouput_shape(test_y)
+        train_y = self._verify_ouput(train_y)
+        val_y = self._verify_ouput(val_y)
+        test_y = self._verify_ouput(test_y)
 
         return train_x, train_y, val_x, val_y, test_x, test_y
 
-    def _verify_ouput_shape(self, outputs):
+    def _verify_ouput(self, outputs):
         if outputs is not None:
-            if self.mode == 'classification' and self.category == "DL":
-                if self.num_classes == 2:
+            if self.mode == 'classification':
+                if isinstance(outputs, np.ndarray):
+                    outputs = outputs.astype(int)
+                if self.category == "DL" and self.num_classes == 2:
                     outputs = np.argmax(outputs, 1).reshape(-1, 1)
         return outputs
 
