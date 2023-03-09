@@ -45,10 +45,10 @@ from ai4water.models import LSTMAutoEncoder
 
 from ai4water.utils.utils import jsonize
 from ai4water._optimize import make_space
-from ai4water.utils.utils import find_best_weight
-from ai4water.utils.utils import dateandtime_now
-from ai4water.utils.utils import make_model
 from ai4water.preprocessing import DataSet
+from ai4water.utils.utils import make_model
+from ai4water.utils.utils import dateandtime_now
+from ai4water.utils.utils import find_best_weight
 
 from ai4water.experiments.utils import dl_space
 from ai4water.experiments.utils import regression_space
@@ -58,13 +58,18 @@ from ai4water.hyperopt import Real
 from ai4water.hyperopt import Integer
 from ai4water.hyperopt import HyperOpt
 from ai4water.hyperopt import Categorical
+from ai4water.hyperopt.utils import loss_histogram
 from ai4water.hyperopt.utils import to_skopt_space
 from ai4water.hyperopt.utils import plot_convergence
-from ai4water.hyperopt.utils import plot_hyperparameters
-from ai4water.hyperopt.utils import loss_histogram
 from ai4water.hyperopt.utils import plot_convergences
+from ai4water.hyperopt.utils import plot_hyperparameters
 
 from .utils import Callbacks, data_to_h5, data_to_csv
+
+try:
+    import wandb
+except (ModuleNotFoundError, ImportError):
+    wandb = None
 
 assert ai4water.__version__ >= "1.06", f"""
     Your current ai4water version is {ai4water.__version__}.
@@ -78,8 +83,8 @@ assert ai4water.__version__ >= "1.06", f"""
 
 # in order to unify the use of metrics
 Metrics = {
-    'regression': lambda t, p, multiclass=False, **kwargs: RegressionMetrics(t, p, **kwargs),
-    'classification': lambda t, p, multiclass=False, **kwargs: ClassificationMetrics(t, p,
+'regression': lambda t, p, multiclass=False, **kwargs: RegressionMetrics(t, p, **kwargs),
+'classification': lambda t, p, multiclass=False, **kwargs: ClassificationMetrics(t, p,
         multiclass=multiclass, **kwargs)
 }
 
@@ -169,6 +174,7 @@ class PipelineMixin(object):
     baseline_results_ = AttributeNotSetYet()
     start_time_ = AttributeNotSetYet()
     parent_suggestions_ = AttributeNotSetYet()
+    _parent_suggestions_ = AttributeNotSetYet()
     callbacks_ = AttributeNotSetYet()
     taylor_plot_data_ = AttributeNotSetYet()
     child_callbacks_ = AttributeNotSetYet()
@@ -218,14 +224,17 @@ class PipelineMixin(object):
             if self.input_transformations is not None and feat in self.input_features:
                 # It is possible that the
                 # user has specified `input_transformtions` argument. In that case
-                # use only those from feat_trans (default) which are in `input_transformations`
-                default_feat_trans = {k:v for k,v in default_feat_trans.items() if k in self.input_transformations}
+                # use only those from feat_trans (default) which are in
+                # `input_transformations`
+                default_feat_trans = {
+                    k:v for k,v in default_feat_trans.items() if k in self.input_transformations}
 
             self.feature_transformations[feat] = default_feat_trans
 
         self._pp_plots = []
         if self.mode == "regression":
-            self._pp_plots =  ["regression", "prediction", "murphy", "residual", "edf"]
+            self._pp_plots =  ["regression", "prediction", "murphy",
+                               "residual", "edf"]
 
     @property
     def all_features(self)->list:
@@ -309,6 +318,7 @@ class OptimizePipeline(PipelineMixin):
             num_classes:int = None,
             category:str = "ML",
             prefix: str = None,
+            wandb_config: dict = None,
             **model_kwargs
     ):
         """
@@ -381,10 +391,11 @@ class OptimizePipeline(PipelineMixin):
             parent_iterations : int, optional (default=100)
                 Number of iterations for parent optimization loop
             child_iterations : int, optional
-                Number of iterations for child optimization loop. It set to 0,
+                Number of iterations for child optimization loop. If set to 0,
                 the child hpo loop is not run which means the hyperparameters
-                of the model are not optimized. You can customize iterations for
-                each model by making using of :meth: `change_child_iterations` method.
+                of the model are not optimized. You can customize number of hpo
+                iterations for each model by making using of :meth: `change_child_iterations`
+                method.
             parent_algorithm : str, optional
                 Algorithm for optimization of parent optimization
             child_algorithm : str, optional
@@ -414,6 +425,12 @@ class OptimizePipeline(PipelineMixin):
                 number of classes, only relevant if mode=="classification".
             category : str, optional (default="DL")
                 either "DL" or "ML". If DL, the pipeline is optimized for neural networks.
+            wandb_config : dict
+                The keyword arguments to initiate wand.init() as dictionary. It is
+                only valid if wandb package is installed.  Default value is None,
+                which means, wandb will not be utilized. For simplest case, pass
+                a dictionary with `project` as key. The user must however login wandb
+                before!
             **model_kwargs :
                 any additional key word arguments for ai4water's Model
 
@@ -460,7 +477,8 @@ class OptimizePipeline(PipelineMixin):
                                                category)
 
         if self.groups_present:
-            self.feature_transformations = {k:self._transformations_methods for k in inputs_to_transform.keys()}
+            self.feature_transformations = {
+                k:self._transformations_methods for k in inputs_to_transform.keys()}
 
         self.num_classes = num_classes
 
@@ -484,7 +502,7 @@ class OptimizePipeline(PipelineMixin):
 
             if self.category == "DL":
                 assert all([model in self.models for model in models]), f"""
-                Only following deep learning models can be considered {DL_MODELS.keys()}
+        Only following deep learning models can be considered {DL_MODELS.keys()}
                 """
 
         self.parent_iterations = parent_iterations
@@ -563,6 +581,12 @@ class OptimizePipeline(PipelineMixin):
             self.batch_space = [Categorical([8, 16, 32, 64], name="batch_size")]
             self.lr_space = [Real(1e-5, 0.05, num_samples=10, name="lr")]
 
+        if wandb_config is None:
+            self.use_wb = False
+        else:
+            self.use_wb = True
+        self.wandb_config = wandb_config
+
         # information about transformations which are to be modified
         self._tr_modifications = {}
 
@@ -626,6 +650,14 @@ class OptimizePipeline(PipelineMixin):
         if not os.path.exists(_path):
             os.makedirs(_path)
         return _path
+
+    @property
+    def use_wb(self):
+        return self._use_wb
+
+    @use_wb.setter
+    def use_wb(self, x):
+        self._use_wb = x
 
     @property
     def mode(self):
@@ -1080,6 +1112,7 @@ class OptimizePipeline(PipelineMixin):
         self.start_time_ = time.asctime()
 
         self.parent_suggestions_ = OrderedDict()
+        self._parent_suggestions_ = OrderedDict()
 
         # create container to store data for Taylor plot
         # It will be populated during postprocessing
@@ -1098,6 +1131,29 @@ class OptimizePipeline(PipelineMixin):
 
         # TODO, currently there are no callbacks for child iteration
         self.child_callbacks_ = [Callbacks()]
+
+        self._wb_init()
+        return
+
+    def _wb_init(self):
+        """initializes the wandb"""
+        if self.use_wb:
+
+            config = {sp.name: sp.categories for sp in self.space()}
+
+            def_notes = f"{self.mode} with {self.category}"
+            def_entity = "entity"
+            def_tags = ['ai4water', "autotab", self.category, self.mode]
+            def_name = os.path.basename(self.path)
+
+            self.wb_run_ = wandb.init(
+                name=self.wandb_config.get('name', def_name),
+                project=self.wandb_config['project'],
+                notes=self.wandb_config.get('notes', def_notes),
+                tags=self.wandb_config.get('tags', def_tags),
+                entity=self.wandb_config.get('entity', def_entity),
+                config=config
+            )
 
         return
 
@@ -1161,7 +1217,7 @@ class OptimizePipeline(PipelineMixin):
                 A pandas dataframe which contains input (x) and output (y) features
                 Only required if ``x`` and ``y`` are not given. The training and validation
                 data will be extracted from this data.
-            validation_data :
+            validation_data : tuple
                 validation data on which pipeline is optimized. Only required if ``data``
                 is not given.
             previous_results : dict, optional (default=None)
@@ -1181,6 +1237,8 @@ class OptimizePipeline(PipelineMixin):
 
         self.reset()
 
+        skopt_cbs = self._verify_cbs(callbacks)
+
         optimizer = HyperOpt(
             self.parent_algorithm,
             param_space=self.space(),
@@ -1194,6 +1252,56 @@ class OptimizePipeline(PipelineMixin):
         if previous_results is not None:
             optimizer.add_previous_results(previous_results)
 
+        self.save_results()
+
+        self.report()
+
+        self._save_config()
+
+        res = optimizer.fit(x=train_x, y=train_y, validation_data = (val_x, val_y))
+
+        if process_results:
+            self._proces_hpo_results(optimizer)
+
+        self._wb_finish()
+
+        setattr(self, 'optimizer_', optimizer)
+
+        return res
+
+    def _wb_finish(self):
+        """prepares the logs and puts them on wandb"""
+        if self.use_wb and self.parent_iter_ > 0:
+
+            # 🐝 Create a wandb Table to log images, labels and predictions to
+            df = pd.DataFrame(
+                [list(val.values()) for val in self._parent_suggestions_.values()],
+            columns=list(self._parent_suggestions_[0].keys())
+            )
+
+            df['iterations'] = self.parent_suggestions_.keys()
+            df['seeds'] = self.parent_seeds_
+
+            df = pd.concat([df, self.metrics_], axis=1)
+
+            df['hyperparas'] = [list(val['model'].values())[0] for val in self.parent_suggestions_.values()]
+
+            table = wandb.Table(data=df, allow_mixed_types=True,
+                                columns=df.columns.tolist())
+
+            wandb.log({"result": table})
+
+            if self.child_iter_>0:
+                table = wandb.Table(
+                    data=pd.DataFrame(self.child_val_scores_),
+                    allow_mixed_types=True)
+
+                wandb.log({"child_hpo_results": table})
+
+            wandb.finish()
+        return
+
+    def _verify_cbs(self, callbacks=None):
         if callbacks is None:
             callbacks = [Callbacks()]
 
@@ -1202,26 +1310,23 @@ class OptimizePipeline(PipelineMixin):
 
         assert isinstance(callbacks, list), f"callbacks of type {type(callbacks)} not allowed"
 
+        from skopt.callbacks import EarlyStopper
+
+        skopt_cbs = []
+        native_cbs = []
         for cbk in callbacks:
-            assert isinstance(cbk, Callbacks), f"""
-            Each callback must be an instance of Callback class but you provided a callback of type {type(cbk)}"""
+            if isinstance(cbk, EarlyStopper):
+                skopt_cbs.append(cbk)
+            elif isinstance(cbk, Callbacks):
+                native_cbs.append(cbk)
+            else:
+                raise ValueError(f"""
+            Each callback must be an instance of Callback class but you provided a 
+            callback of type {type(cbk)}""")
 
-        setattr(self, 'callbacks_', callbacks)
+        setattr(self, 'callbacks_', native_cbs)
 
-        res = optimizer.fit(x=train_x, y=train_y, validation_data = (val_x, val_y))
-
-        if process_results:
-            self._proces_hpo_results(optimizer)
-
-        setattr(self, 'optimizer_', optimizer)
-
-        self.save_results()
-
-        self.report()
-
-        self._save_config()
-
-        return res
+        return skopt_cbs
 
     def _proces_hpo_results(self, optimizer):
         """
@@ -1232,7 +1337,8 @@ class OptimizePipeline(PipelineMixin):
 
         optimizer.save_iterations_as_xy()
 
-        optimizer.plot_parallel_coords()
+        plt.close('all')
+        optimizer.plot_parallel_coords(show=False)
 
         # deep learning related results
         if self.category == "DL":
@@ -1253,12 +1359,18 @@ class OptimizePipeline(PipelineMixin):
 
         # convergence plot,
         #if sr.x_iters is not None and self.backend != "skopt": # todo
+        plt.close('all')
         optimizer._plot_convergence(show=False)
+        if self.use_wb:
+            fig = plt.gcf()
+            wandb.log({"convergence": fig})
 
+        plt.close('all')
         # plot of hyperparameter space as explored by the optimizer
         if optimizer.backend != 'skopt' and len(self.space()) < 20 and skopt is not None:
             optimizer._plot_evaluations()
 
+        hpo_imp = True
         if len(optimizer.best_paras(True))>1:
             plt.close('all')
             try:
@@ -1266,7 +1378,12 @@ class OptimizePipeline(PipelineMixin):
                 plt.close('all')
                 optimizer.plot_importance(plot_type="bar", show=False)
             except (RuntimeError, AttributeError, ValueError):
+                hpo_imp = False
                 warnings.warn(f"Error encountered during fanova calculation")
+
+        if hpo_imp and self.use_wb:
+            fig = plt.gcf()
+            wandb.log({"importance": fig})
 
         if optimizer.backend == 'hyperopt':
             loss_histogram([y for y in optimizer.trials.losses()],
@@ -1345,6 +1462,9 @@ class OptimizePipeline(PipelineMixin):
         else:
             model_config = {model: opt_paras}
 
+        #if self.use_wb:
+        #    self.wb_run_.config.update({"model": model})
+
         # fit the model with optimized hyperparameters and suggested transformations
         _model = self.build_model(
             model=model_config,
@@ -1354,7 +1474,8 @@ class OptimizePipeline(PipelineMixin):
             **kwargs
         )
 
-        # set the global seed. This is only for internal use so that results become more reproducible
+        # set the global seed. This is only for internal use so that results
+        # become more reproducible
         # when the model is built again
         _model.seed_everything(int(self.parent_seeds_[self.parent_iter_]))
 
@@ -1365,6 +1486,8 @@ class OptimizePipeline(PipelineMixin):
             'model': {model: opt_paras},
             'path': _model.path
         }
+
+        self._parent_suggestions_[self.parent_iter_] = suggestions
 
         val_score = self._fit_and_eval(
             x,
@@ -1392,9 +1515,16 @@ class OptimizePipeline(PipelineMixin):
             *self.metrics_best_.loc[self.parent_iter_].fillna('').values.tolist())
         )
 
+        self._wb_log()
+
         self.parent_iter_ += 1
 
         return val_score
+
+    def _wb_log(self):
+        if self.use_wb:
+            wandb.log(self.metrics_.loc[self.parent_iter_].to_dict())
+        return
 
     def optimize_model_paras(
             self,
@@ -1806,7 +1936,7 @@ class OptimizePipeline(PipelineMixin):
                 ``iter_num``
         """
 
-        metric_name = metric_name or self.eval_metric
+        metric_name = metric_name or self.eval_metric_name
 
         # checks if the given metric is a valid metric or not
         if metric_name not in self.monitor_names:
@@ -1925,14 +2055,16 @@ class OptimizePipeline(PipelineMixin):
                 t, p = model.predict(test_x, test_y, return_true=True)
 
                 errors = self.Metrics(t, p, multiclass=model.is_multiclass_)
-                val_scores[model_name] = getattr(errors, self.eval_metric)(**METRICS_KWARGS.get(self.eval_metric, {}))
+                val_scores[model_name] = getattr(errors, self.eval_metric)(
+                    **METRICS_KWARGS.get(self.eval_metric, {}))
 
                 _metrics = {}
                 for m, mn in zip(self.monitor, self.monitor_names):
                     if callable(m):
                         _metrics[mn] = m(t,p)
                     else:
-                        _metrics[mn] = getattr(errors, m)(**METRICS_KWARGS.get(m, {}))
+                        _metrics[mn] = getattr(errors, m)(
+                            **METRICS_KWARGS.get(m, {}))
                 metrics[model_name] = _metrics
 
             results = {
@@ -1942,7 +2074,8 @@ class OptimizePipeline(PipelineMixin):
 
             setattr(self, 'baseline_results_', results)
 
-            with open(os.path.join(self.path, "baselines", "results.json"), 'w') as fp:
+            fpath = os.path.join(self.path, "baselines", "results.json")
+            with open(fpath, 'w') as fp:
                 json.dump(results, fp, sort_keys=True, indent=4)
         else:
             val_scores, metrics = self.baseline_results_.values()
@@ -1975,12 +2108,14 @@ class OptimizePipeline(PipelineMixin):
             y :
                 the target data for training
             data :
-                raw unprepared and unprocessed data from which x,y pairs for both training
-                and test will be prepared. It is only required if x, y are not provided.
+                raw unprepared and unprocessed data from which x,y pairs for both
+                training and test will be prepared. It is only required if x, y
+                are not provided.
             test_data :
-                a tuple/list of length 2 whose first element is x and second value is y.
-                The is the data on which the performance of optimized pipeline will be
-                calculated. This should only be given if ``data`` argument is not given.
+                a tuple/list of length 2 whose first element is x and second value
+                is y. The is the data on which the performance of optimized pipeline
+                 will be calculated. This should only be given if ``data`` argument
+                 is not given.
             metric_name: str
                 The name of metric with respect to which the models have
                 to be compared. If not given, the evaluation metric is used.
@@ -1993,7 +2128,8 @@ class OptimizePipeline(PipelineMixin):
                 which is (training + validation) data. If False, then
                 model is trained only on training data.
             lower_limit : float/int, optional (default=None)
-                clip the values below this value. Set this value to None to avoid clipping.
+                clip the values below this value. Set this value to None to avoid
+                clipping.
             upper_limit : float/int, optional (default=None)
                 clip the values above this value
             figsize: tuple
@@ -2024,7 +2160,8 @@ class OptimizePipeline(PipelineMixin):
         ... # compare the models by also plotting bias value
         >>> pl.dumbbell_plot(data=data, metric_name="r2_score")
         ... # get the matplotlb axes for further processing
-        >>> ax = pl.dumbbell_plot(data=data, metric_name="r2_score", lower_limit=0.0, show=False)
+        >>> ax = pl.dumbbell_plot(data=data, metric_name="r2_score",
+        ...       lower_limit=0.0, show=False)
 
         .. _Dumbbell:
             https://easy-mpl.readthedocs.io/en/latest/plots.html#easy_mpl.dumbbell_plot
@@ -2036,11 +2173,13 @@ class OptimizePipeline(PipelineMixin):
 
         metric_name = metric_name or self.eval_metric
 
-        _, bl_results = self.baseline_results(x=x,
-                                              y=y,
-                                              data=data,
-                                              fit_on_all_train_data=fit_on_all_train_data,
-                                              test_data=test_data)
+        _, bl_results = self.baseline_results(
+            x=x,
+            y=y,
+            data=data,
+            fit_on_all_train_data=fit_on_all_train_data,
+            test_data=test_data
+        )
         plt.close('all')
 
         bl_models = {}
@@ -2051,7 +2190,8 @@ class OptimizePipeline(PipelineMixin):
 
         for model_name in self.models:
             try:
-                metric_val, _ = self.get_best_pipeline_by_model(model_name, metric_name)
+                metric_val, _ = self.get_best_pipeline_by_model(
+                    model_name, metric_name)
             # the model was not used so consider the baseline result as optimizied
             # result
             except ModelNotUsedError:
@@ -2125,12 +2265,14 @@ class OptimizePipeline(PipelineMixin):
             y :
                 the target data for training
             data :
-                raw unprepared and unprocessed data from which x,y pairs for both training
-                and test will be prepared. It is only required if x, y are not provided.
+                raw unprepared and unprocessed data from which x,y pairs for both
+                training and test will be prepared. It is only required if x, y
+                are not provided.
             test_data :
-                a tuple/list of length 2 whose first element is x and second value is y.
-                The is the data on which the performance of optimized pipeline will be
-                calculated. This should only be given if ``data`` argument is not given.
+                a tuple/list of length 2 whose first element is x and second value
+                is y. The is the data on which the performance of optimized pipeline
+                will be calculated. This should only be given if ``data`` argument
+                is not given.
             fit_on_all_train_data : bool, optional (default=True)
                 If true, the model is trained on (training+validation) data.
                 This is based on supposition that the data is split into
@@ -2150,7 +2292,8 @@ class OptimizePipeline(PipelineMixin):
             verbosity : int, optional (default=0)
                 determines the amount of print information
             **kwargs :
-                any additional keyword arguments for taylor_plot function of easy_mpl_.
+                any additional keyword arguments for taylor_plot function of
+                easy_mpl_.
 
         Returns
         -------
@@ -2226,14 +2369,15 @@ class OptimizePipeline(PipelineMixin):
         It saves tried models and transformations at each step as json file
         with the name ``parent_suggestions.json``.
 
-        An ``errors.csv`` file is saved which contains validation performance of the models
-        at each optimization iteration with respect to all metrics being monitored.
+        An ``errors.csv`` file is saved which contains validation performance of
+        the models at each optimization iteration with respect to all metrics
+        being monitored.
 
-        The performance of each model during child optimization iteration is saved as a csv
-        file with the name ``child_val_scores.csv``.
+        The performance of each model during child optimization iteration is saved
+        as a csv file with the name ``child_val_scores.csv``.
 
-        The global seeds for parent and child iterations are also saved in csv files with
-        name ``parent_seeds.csv`` and ``child_seeds.csv``.
+        The global seeds for parent and child iterations are also saved in csv
+        files with name ``parent_seeds.csv`` and ``child_seeds.csv``.
         All of these results are saved in pl.path folder.
 
         Returns
@@ -2304,15 +2448,19 @@ class OptimizePipeline(PipelineMixin):
         num_models = len(self.models)
         text = f"""
     The optimization started at {st_time} and ended at {en_time} after 
-completing {self.parent_iter_} iterations. The optimization considered {num_models} models. 
+    completing {self.parent_iter_} iterations. The optimization considered 
+    {num_models} models. 
         """
 
         if self.parent_iter_ < self.parent_iterations:
             text += f"""
-The given parent iterations were {self.parent_iterations} but optimization stopped early"""
+    The given parent iterations were {self.parent_iterations} but optimization 
+    stopped early"""
 
         if hasattr(self, 'exc_type_'):
-            text += f"Execution was stopped due to {str(self.exc_type_)} with {str(self.exc_val_)}"
+            text += f"""
+    Execution was stopped due to {str(self.exc_type_)} with {str(self.exc_val_)}
+    """
 
         for metric in self.monitor_names:
             text += self.metric_report(metric)
@@ -2359,7 +2507,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         info = {}
         environ = {}
         for k,v in os.environ.items():
-            if k in ['CONDA_DEFAULT_ENV', 'NUMBER_OF_PROCESSORS', 'USERNAME', 'CONDA_PREFIX', 'OS']:
+            if k in ['CONDA_DEFAULT_ENV', 'NUMBER_OF_PROCESSORS', 'USERNAME',
+                     'CONDA_PREFIX', 'OS']:
                 environ[k] = v
 
         info['environ'] = environ
@@ -2494,7 +2643,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         fpath = os.path.join(path, "taylor_data.csv")
         if os.path.exists(fpath):
             taylor_data = pd.read_csv(fpath)
-            pl.taylor_plot_data_['observations']['test'] = taylor_data.pop('observations')
+            pl.taylor_plot_data_['observations']['test'] = taylor_data.pop(
+                'observations')
 
         pl.parent_prefix_ = os.path.basename(path)
         pl.path = path
@@ -2602,7 +2752,11 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         return model
 
-    def get_best_pipeline(self, metric_name:str=None, model_name:str=None)->dict:
+    def get_best_pipeline(
+            self,
+            metric_name:str=None,
+            model_name:str=None
+    )->dict:
         """finds best pipeline"""
         metric_name = metric_name or self.eval_metric
 
@@ -2632,12 +2786,14 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             y :
                 the target data for training
             data :
-                raw unprepared and unprocessed data from which x,y pairs for both training
-                and test will be prepared. It is only required if x, y are not provided.
+                raw unprepared and unprocessed data from which x,y pairs for both
+                training and test will be prepared. It is only required if x, y
+                are not provided.
             test_data :
-                a tuple/list of length 2 whose first element is x and second value is y.
-                The is the data on which the performance of optimized pipeline will be
-                calculated. This should only be given if ``data`` argument is not given.
+                a tuple/list of length 2 whose first element is x and second value
+                is y. The is the data on which the performance of optimized
+                pipeline will be calculated. This should only be given if ``data``
+                argument is not given.
             metric_name : str
                 the metric with respect to which the best model is fetched
                 and then built/evaluated. If not given, the best model is
@@ -2706,12 +2862,14 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             y :
                 the target data for training
             data :
-                raw unprepared and unprocessed data from which x,y pairs for both training
-                and test will be prepared. It is only required if x, y are not provided.
+                raw unprepared and unprocessed data from which x,y pairs for both
+                training and test will be prepared. It is only required if x, y
+                are not provided.
             test_data :
-                a tuple/list of length 2 whose first element is x and second value is y.
-                The is the data on which the performance of optimized pipeline will be
-                calculated. This should only be given if ``data`` argument is not given.
+                a tuple/list of length 2 whose first element is x and second
+                value is y. The is the data on which the performance of optimized
+                pipeline will be calculated. This should only be given if ``data``
+                argument is not given.
             fit_on_all_train_data : bool, optional (default=True)
                 If true, the model is trained on (training+validation) data.
                 This is based on supposition that the data is split into
@@ -2778,12 +2936,14 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             y :
                 the target data for training
             data :
-                raw unprepared and unprocessed data from which x,y pairs for both training
-                and test will be prepared. It is only required if x, y are not provided.
+                raw unprepared and unprocessed data from which x,y pairs for both
+                training and test will be prepared. It is only required if x, y
+                are not provided.
             test_data :
-                a tuple/list of length 2 whose first element is x and second value is y.
-                The is the data on which the peformance of optimized pipeline will be
-                calculated. This should only be given if ``data`` argument is not given.
+                a tuple/list of length 2 whose first element is x and second value
+                is y. The is the data on which the peformance of optimized
+                pipeline will be calculated. This should only be given if ``data``
+                argument is not given.
             metric_name : str
                 the metric with respect to which the best model is searched
                 and then built/trained/evaluated. If None, the best model is
@@ -2928,10 +3088,16 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         model.predict(train_x, train_y, metrics="all", plots=self._pp_plots)
 
-        t, p = model.predict(val_x, val_y, metrics="all", plots=self._pp_plots, return_true=True)
+        t, p = model.predict(
+            val_x, val_y, metrics="all", plots=self._pp_plots, return_true=True)
 
         if test_x is not None:
-            t, p = model.predict(test_x, test_y, metrics="all", plots=self._pp_plots, return_true=True)
+            t, p = model.predict(
+                test_x,
+                test_y,
+                metrics="all",
+                plots=self._pp_plots,
+                return_true=True)
 
 
         if model_name:
@@ -2974,10 +3140,12 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
 
         if x is not None:
             assert y is not None
-            t, p = model.predict(x=x, y=y, process_results=False, return_true=True)
+            t, p = model.predict(
+                x=x, y=y, process_results=False, return_true=True)
         else:
             assert x is None
-            t, p = model.predict_on_test_data(data=data, process_results=False, return_true=True)
+            t, p = model.predict_on_test_data(
+                data=data, process_results=False, return_true=True)
 
         errors = self.Metrics(t, p, multiclass=model.is_multiclass_)
 
@@ -3004,15 +3172,17 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             y :
                 the target data for training
             data :
-                raw unprepared and unprocessed data from which x,y pairs for both training
-                and test will be prepared. It is only required if x, y are not provided.
+                raw unprepared and unprocessed data from which x,y pairs for both
+                training and test will be prepared. It is only required if x, y
+                are not provided.
             test_data :
-                a tuple/list of length 2 whose first element is x and second value is y.
-                The is the data on which the performance of optimized pipeline will be
-                calculated. This should only be given if ``data`` argument is not given.
+                a tuple/list of length 2 whose first element is x and second value
+                is y. The is the data on which the performance of optimized pipeline
+                will be calculated. This should only be given if ``data`` argument
+                is not given.
             metric_name : str
-                the name of metric to determine best version of a model. If not given,
-                parent_val_metric will be used.
+                the name of metric to determine best version of a model. If not
+                given, parent_val_metric will be used.
             fit_on_all_train_data : bool, optional (default=True)
                 If true, the model is trained on (training+validation) data.
                 This is based on supposition that the data is split into
@@ -3034,12 +3204,13 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
             validation_data=None,
             test_data=test_data)
 
-        met_name = metric_name or self.eval_metric
+        met_name = metric_name or self.eval_metric_name
 
         for model in self.models:
 
             try:
-                metric_val, pipeline = self.get_best_pipeline_by_model(model, met_name)
+                metric_val, pipeline = self.get_best_pipeline_by_model(
+                    model, met_name)
             except ModelNotUsedError:
                 continue
 
@@ -3236,12 +3407,13 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                                    show=False,
                                    **kwargs)
         else:
-            ax = bar_chart(list(models.values()),
-                           labels,
-                           ax_kws={'xlabel': METRIC_NAMES.get(metric_name, metric_name)},
-                           sort=True,
-                           show=False,
-                           **kwargs)
+            ax = bar_chart(
+                list(models.values()),
+                labels,
+                ax_kws={'xlabel': METRIC_NAMES.get(metric_name, metric_name)},
+                sort=True,
+                show=False,
+                **kwargs)
 
         fpath = os.path.join(self.path, f"{plot_type}_plot_wrt_{metric_name}")
         plt.savefig(fpath, dpi=300, bbox_inches='tight')
@@ -3268,7 +3440,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
         t, p = model.predict(*data, return_true=True, process_results=False)
 
         for cbk in callbacks:
-            getattr(cbk, 'on_eval_begin')(model, self.parent_iter_, x=None, y=None, validation_data=data)
+            getattr(cbk, 'on_eval_begin')(
+                model, self.parent_iter_, x=None, y=None, validation_data=data)
 
         if len(p) == p.size:
             p = p.reshape(-1, 1)  # TODO, for cls, Metrics do not accept (n,) array
@@ -3328,7 +3501,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                 if pm_until_this_iter.isna().sum() == pm_until_this_iter.size:
                     best_so_far = fill_val(METRIC_TYPES[metric_name], np.nan)
                 else:
-                    best_so_far = func(self.metrics_best_.loc[:self.parent_iter_, metric_name])
+                    best_so_far = func(
+                        self.metrics_best_.loc[:self.parent_iter_, metric_name])
 
                     best_so_far = fill_val(METRIC_TYPES[metric_name], best_so_far)
 
@@ -3338,7 +3512,8 @@ The given parent iterations were {self.parent_iterations} but optimization stopp
                     self.metrics_best_.at[self.parent_iter_, metric_name] = pm
 
         for cbk in callbacks:
-            getattr(cbk, 'on_eval_end')(model, self.parent_iter_, x=None, y=None, validation_data=data)
+            getattr(cbk, 'on_eval_end')(
+                model, self.parent_iter_, x=None, y=None, validation_data=data)
 
         return val_score
 

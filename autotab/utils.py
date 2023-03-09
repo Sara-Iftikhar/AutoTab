@@ -1,5 +1,7 @@
 
-__all__ = ["Callbacks", "data_to_csv", "data_to_h5"]
+__all__ = ["Callbacks", "data_to_csv", "data_to_h5",
+           "EarlyStopperMinImp", "DeltaYStopper"]
+
 
 import numpy as np
 import pandas as pd
@@ -70,7 +72,8 @@ class DeltaYStopper(EarlyStopper):
 
 
 class EarlyStopperMinImp(EarlyStopper):
-    """Stops optimization of objective function does not shows improvement
+    """
+    Stops optimization if objective function does not show improvement
     after first `patience` iterations. """
     def __init__(self, min_improvement, patience):
         super(EarlyStopperMinImp, self).__init__()

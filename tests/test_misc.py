@@ -7,7 +7,7 @@ import os
 import unittest
 
 from autotab import OptimizePipeline
-from autotab.utils import Callbacks
+from autotab.utils import Callbacks#, EarlyStopperMaxTime
 from ai4water import Model
 from ai4water.preprocessing import DataSet
 
@@ -283,6 +283,27 @@ class TestMisc(unittest.TestCase):
             pass
         return
 
+    # def test_timeout_callback(self):
+    #     callbacks = [EarlyStopperMaxTime(1)]
+    #     pl = build_basic(
+    #         eval_metric="r2",
+    #         child_iterations=0,
+    #         parent_iterations=3,
+    #         parent_algorithm="random",
+    #     )
+    #     pl.fit(x=train_x, y=train_y, validation_data=(val_x, val_y),
+    #            process_results=False,
+    #            callbacks=callbacks)
+
+    def test_wandb(self):
+        pl = build_basic(
+            eval_metric="r2",
+            child_iterations=0,
+            parent_iterations=10,
+            parent_algorithm="random",
+            wandb_config = dict(project="ab_isl", entity="atherabbas")
+        )
+        pl.fit(x=train_x, y=train_y, validation_data=(val_x, val_y), process_results=False)
 
 if __name__ == "__main__":
     unittest.main()
