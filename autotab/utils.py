@@ -5,7 +5,11 @@ __all__ = ["Callbacks", "data_to_csv", "data_to_h5",
 
 import numpy as np
 import pandas as pd
-from skopt.callbacks import EarlyStopper
+
+try:
+    from skopt.callbacks import EarlyStopper
+except ModuleNotFoundError:
+    class EarlyStopper(object): pass
 
 
 class Callbacks(object):

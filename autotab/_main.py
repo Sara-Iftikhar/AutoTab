@@ -178,6 +178,7 @@ class PipelineMixin(object):
     callbacks_ = AttributeNotSetYet()
     taylor_plot_data_ = AttributeNotSetYet()
     child_callbacks_ = AttributeNotSetYet()
+    CHILD_PREFIX_ = AttributeNotSetYet()
 
     def __init__(
             self,
@@ -1139,21 +1140,16 @@ class OptimizePipeline(PipelineMixin):
         """initializes the wandb"""
         if self.use_wb:
 
-            config = {sp.name: sp.categories for sp in self.space()}
+            init_config = dict(
+                config = {sp.name: sp.categories for sp in self.space()},
+                notes = f"{self.mode} with {self.category}",
+                entity = "entity",
+                tags = ['ai4water', "autotab", self.category, self.mode],
+                name = os.path.basename(self.path))
 
-            def_notes = f"{self.mode} with {self.category}"
-            def_entity = "entity"
-            def_tags = ['ai4water', "autotab", self.category, self.mode]
-            def_name = os.path.basename(self.path)
+            init_config.update(self.wandb_config)
 
-            self.wb_run_ = wandb.init(
-                name=self.wandb_config.get('name', def_name),
-                project=self.wandb_config['project'],
-                notes=self.wandb_config.get('notes', def_notes),
-                tags=self.wandb_config.get('tags', def_tags),
-                entity=self.wandb_config.get('entity', def_entity),
-                config=config
-            )
+            self.wb_run_ = wandb.init(**init_config)
 
         return
 
@@ -1273,7 +1269,7 @@ class OptimizePipeline(PipelineMixin):
         """prepares the logs and puts them on wandb"""
         if self.use_wb and self.parent_iter_ > 0:
 
-            # 🐝 Create a wandb Table to log images, labels and predictions to
+            # 🐝 Create a wandb Table to log parent suppestions and metrics
             df = pd.DataFrame(
                 [list(val.values()) for val in self._parent_suggestions_.values()],
             columns=list(self._parent_suggestions_[0].keys())
@@ -1289,16 +1285,18 @@ class OptimizePipeline(PipelineMixin):
             table = wandb.Table(data=df, allow_mixed_types=True,
                                 columns=df.columns.tolist())
 
-            wandb.log({"result": table})
+            self.wb_run_.log({"result": table})
 
             if self.child_iter_>0:
                 table = wandb.Table(
                     data=pd.DataFrame(self.child_val_scores_),
                     allow_mixed_types=True)
 
-                wandb.log({"child_hpo_results": table})
+                self.wb_run_.log({"child_hpo_results": table})
 
-            wandb.finish()
+            self.wb_run_.notes = self.report(False)
+
+            self.wb_run_.finish()
         return
 
     def _verify_cbs(self, callbacks=None):
@@ -1352,23 +1350,23 @@ class OptimizePipeline(PipelineMixin):
                 ylabel='MSE',
                 leg_pos="upper right")
 
-        optimizer._plot_edf()
+        getattr(optimizer, "_plot_edf")()
 
         # distributions/historgrams of explored hyperparameters
-        optimizer._plot_distributions(show=False)
+        getattr(optimizer, "_plot_distributions")(show=False)
 
         # convergence plot,
         #if sr.x_iters is not None and self.backend != "skopt": # todo
         plt.close('all')
-        optimizer._plot_convergence(show=False)
+        getattr(optimizer, "_plot_convergence")(show=False)
         if self.use_wb:
             fig = plt.gcf()
-            wandb.log({"convergence": fig})
+            self.wb_run_.log({"convergence": fig})
 
         plt.close('all')
         # plot of hyperparameter space as explored by the optimizer
         if optimizer.backend != 'skopt' and len(self.space()) < 20 and skopt is not None:
-            optimizer._plot_evaluations()
+            getattr(optimizer, "_plot_evaluations")()
 
         hpo_imp = True
         if len(optimizer.best_paras(True))>1:
@@ -1383,7 +1381,7 @@ class OptimizePipeline(PipelineMixin):
 
         if hpo_imp and self.use_wb:
             fig = plt.gcf()
-            wandb.log({"importance": fig})
+            self.wb_run_.log({"importance": fig})
 
         if optimizer.backend == 'hyperopt':
             loss_histogram([y for y in optimizer.trials.losses()],
@@ -1427,7 +1425,7 @@ class OptimizePipeline(PipelineMixin):
                 input feature and the model to use
         """
 
-        self.CHILD_PREFIX = f"{self.parent_iter_}_{dateandtime_now()}"
+        self.CHILD_PREFIX_ = f"{self.parent_iter_}_{dateandtime_now()}"
         # self.seed = np.random.randint(0, 10000, 1).item()
 
         if self._optimize_model:
@@ -1462,15 +1460,12 @@ class OptimizePipeline(PipelineMixin):
         else:
             model_config = {model: opt_paras}
 
-        #if self.use_wb:
-        #    self.wb_run_.config.update({"model": model})
-
         # fit the model with optimized hyperparameters and suggested transformations
         _model = self.build_model(
             model=model_config,
             x_transformation=x_trnas,
             y_transformation=y_trans,
-            prefix=f"{self.parent_prefix_}{SEP}{self.CHILD_PREFIX}",
+            prefix=f"{self.parent_prefix_}{SEP}{self.CHILD_PREFIX_}",
             **kwargs
         )
 
@@ -1522,8 +1517,9 @@ class OptimizePipeline(PipelineMixin):
         return val_score
 
     def _wb_log(self):
+        """logs performance metrics being monitored"""
         if self.use_wb:
-            wandb.log(self.metrics_.loc[self.parent_iter_].to_dict())
+            self.wb_run_.log(self.metrics_.loc[self.parent_iter_].to_dict())
         return
 
     def optimize_model_paras(
@@ -1553,7 +1549,7 @@ class OptimizePipeline(PipelineMixin):
                 model=model_config,
                 x_transformation=x_transformations,
                 y_transformation=y_transformations,
-                prefix=f"{self.parent_prefix_}{SEP}{self.CHILD_PREFIX}",
+                prefix=f"{self.parent_prefix_}{SEP}{self.CHILD_PREFIX_}",
                 lr=float(lr),
                 batch_size=int(batch_size)
             )
@@ -1589,7 +1585,7 @@ class OptimizePipeline(PipelineMixin):
             param_space=child_space,
             verbosity=0,
             process_results=False,
-            opt_path=os.path.join(self.path, self.CHILD_PREFIX),
+            opt_path=os.path.join(self.path, self.CHILD_PREFIX_),
         )
 
         optimizer.fit()
@@ -1715,7 +1711,8 @@ class OptimizePipeline(PipelineMixin):
     )->float:
         """performs cross validation and evaluates the model"""
         for cbk in callbacks:
-            getattr(cbk, 'on_cross_val_begin')(model, self.parent_iter_, x=x, y=y, validation_data=validation_data)
+            getattr(cbk, 'on_cross_val_begin')(
+                model, self.parent_iter_, x=x, y=y, validation_data=validation_data)
 
         val_scores = model.cross_val_score(
             *combine_train_val(x, y, validation_data=validation_data),
@@ -1786,6 +1783,7 @@ class OptimizePipeline(PipelineMixin):
             model,
             data=validation_data,
             metric=self.eval_metric,
+            metric_name = self.eval_metric_name,
             callbacks=self.callbacks_,
             eval_metrics=eval_metrics
         )
@@ -3429,6 +3427,7 @@ class OptimizePipeline(PipelineMixin):
             model: Model,
             data:tuple,
             metric: Union[str, Callable],
+            metric_name:str,
             callbacks:list,
             eval_metrics=False
     ) -> float:
@@ -3469,7 +3468,7 @@ class OptimizePipeline(PipelineMixin):
         else:    
             val_score = getattr(errors, metric)()
 
-        metric_type = METRIC_TYPES.get(metric, 'min')
+        metric_type = METRIC_TYPES.get(metric_name, 'min')
 
         # the optimization will always solve minimization problem so if
         # the metric is to be maximized change the val_score accordingly
