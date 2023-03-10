@@ -1152,7 +1152,7 @@ class OptimizePipeline(PipelineMixin):
                         self.eval_metric_name]
 
             if self.mode == "classification":
-                def_tags += [self.num_classes]
+                def_tags += [f"{self.num_classes}_classes"]
 
             init_config = dict(
                 config = {sp.name: sp.categories for sp in self.space()},
@@ -1525,10 +1525,12 @@ class OptimizePipeline(PipelineMixin):
 
         self.val_scores_[self.parent_iter_] = val_score
 
-        if np.less_equal(val_score, np.nanmin(self.val_scores_[:self.parent_iter_+1 ])):
-            _val_score = val_score
-        else:
-            _val_score = ''
+        _val_score = val_score
+        if self.parent_iter_>0:
+            if np.less(val_score, np.nanmin(self.val_scores_[:self.parent_iter_])):
+                _val_score = val_score
+            else:
+                _val_score = ''
 
         # print the metrics being monitored
         # we fill the nan in metrics_best_ with '' so that it does not gen printed
@@ -3827,9 +3829,12 @@ class ModelNotUsedError(Exception):
 
 
 def compare_func(metric_type:str):
+    # use np.less and np.greater than np.less_equal and np.greater_equal
+    # because in classification we can get exactly same output again
+    # and again
     if metric_type == "min":
-        return np.less_equal
-    return np.greater_equal
+        return np.less
+    return np.greater
 
 
 def compare_func1(metric_type:str):
