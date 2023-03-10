@@ -368,3 +368,39 @@ instead of following
 
 The use of ``with`` will make sure that the results are saved even
 if an error is encountered uduring ``fit``.
+
+How use weights and biases to log our results
+==============================================
+You can use `weights and biases <https://wandb.ai>`_ to log your results. Make
+sure that the package `wandb <https://docs.wandb.ai/quickstart#set-up-wb>`_ is
+installed. Then use the argument `wandb_config` to provide a dictionary
+that will be given to `wandb.init <https://docs.wandb.ai/ref/python/init>`_.
+Following example provides a way of using weights and biases
+
+.. code-block:: python
+
+    >>> from autotab import OptimizePipeline
+    >>> pl = OptimizePipeline(
+    ...         ...  # add other arguments
+    ...         wandb_config=dict(project="project_name", entity="entity_name"),
+    ...           )
+
+
+How to use custom performance metric
+====================================
+If you want to use a custom performance metric either as `eval_metric` or
+monitor the validattion performance on your data using a custom metric, you
+can provide a `callable` object to `eval_metric` and `monitor` arguments respectively.
+Following example shows how to use cohen's kappa function from sklearn as `eval_metric`
+and to monitor it along with `accuracy` in a classification problem.
+
+.. code-block:: python
+
+    >>> from autotab import OptimizePipeline
+    >>> from sklearn.metrics import cohen_kappa_score
+    >>> pl = OptimizePipeline(
+    ...         ...  # add other arguments
+    ...         mode="classification",
+    ...         "eval_metric": cohen_kappa_score,
+    ...         "monitor": ["accuracy", cohen_kappa_score],
+    ...           )

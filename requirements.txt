@@ -1,2 +1,2 @@
-ai4water[ml_hpo]>=1.2
-h5py
+
+ai4water[ml_hpo]>=1.6

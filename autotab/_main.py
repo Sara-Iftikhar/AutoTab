@@ -430,7 +430,9 @@ class OptimizePipeline(PipelineMixin):
                 The keyword arguments to initiate wand.init() as dictionary. It is
                 only valid if wandb package is installed.  Default value is None,
                 which means, wandb will not be utilized. For simplest case, pass
-                a dictionary with `project` as key. The user must however login wandb
+                a dictionary with `project` as key.
+                >>> dict(project="my_project")
+                The user must however login wandb
                 before!
             **model_kwargs :
                 any additional key word arguments for ai4water's Model
@@ -1140,12 +1142,18 @@ class OptimizePipeline(PipelineMixin):
         """initializes the wandb"""
         if self.use_wb:
 
+            if self.child_iterations>0:
+                text = self.child_algorithm
+            else:
+                text = "no_hpo"
+
             init_config = dict(
                 config = {sp.name: sp.categories for sp in self.space()},
                 notes = f"{self.mode} with {self.category}",
                 entity = "entity",
-                tags = ['ai4water', "autotab", self.category, self.mode],
-                name = os.path.basename(self.path))
+                tags = ['ai4water', "autotab", self.category, self.mode, self.parent_algorithm],
+                name =  f"{self.parent_algorithm}_{text}_{os.path.basename(self.path)[-15:]}"
+            )
 
             init_config.update(self.wandb_config)
 
@@ -1196,10 +1204,17 @@ class OptimizePipeline(PipelineMixin):
         """
         Optimizes the pipeline for the given data.
         Either
-            - only x,y should be given
+            - only x,y should be given (validation data will be taken from x and y based upon `val_fraction` argument
             - or x,y and validation_data should be given
-            - or only data should be given
+            - or only data should be given (training and validation data will be taken from data based upon `train_fraction` and `val_fraction` arguments`)
         every other combination of x,y, data and validation_data will raise error
+
+        Note
+        ----
+        If test_data is not to be extracted/seprated from x,y/data then you must set
+        `train_fraction` to 1.0. Please check
+        `this tutorial <https://ai4water.readthedocs.io/projects/Examples/en/latest/_notebooks/model/data_splitting.html>`_
+        for more on data splitting.
 
         Parameters
         ----------
@@ -1295,6 +1310,13 @@ class OptimizePipeline(PipelineMixin):
                 self.wb_run_.log({"child_hpo_results": table})
 
             self.wb_run_.notes = self.report(False)
+
+            cols = self.metrics_best_.columns
+            # find last nan value in each column
+            indices = self.metrics_best_.apply(pd.Series.last_valid_index)
+            vals = [self.metrics_best_[col].iloc[index] for col, index in zip(cols, indices)]
+            summary_metrics = {metric:val for metric, val in zip(cols, vals)}
+            self.wb_run_.summary = summary_metrics
 
             self.wb_run_.finish()
         return
