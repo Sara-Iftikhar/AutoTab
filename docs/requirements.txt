@@ -1,5 +1,6 @@
 #ai4water[ml_hpo]>=1.02
-git+https://github.com/AtrCheema/AI4Water.git@dev
+git+https://github.com/AtrCheema/AI4Water.git@940fe143203fdead5caa59e586a8581b80b85a08
+git+https://github.com/Sara-Iftikhar/easy_mpl.git@8ed17a66f59284503be0456dc74794c9f0dffa2f
 lightgbm
 hyperopt
 optuna

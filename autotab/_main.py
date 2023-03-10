@@ -1147,11 +1147,18 @@ class OptimizePipeline(PipelineMixin):
             else:
                 text = "no_hpo"
 
+            def_tags = [self.category, self.mode, self.parent_algorithm,
+                        f"{len(self.models)}_models", f"{self.num_ins}_inputs",
+                        self.eval_metric_name]
+
+            if self.mode == "classification":
+                def_tags += [self.num_classes]
+
             init_config = dict(
                 config = {sp.name: sp.categories for sp in self.space()},
                 notes = f"{self.mode} with {self.category}",
                 entity = "entity",
-                tags = ['ai4water', "autotab", self.category, self.mode, self.parent_algorithm],
+                tags = def_tags,
                 name =  f"{self.parent_algorithm}_{text}_{os.path.basename(self.path)[-15:]}"
             )
 
