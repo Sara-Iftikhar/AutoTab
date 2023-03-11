@@ -71,6 +71,11 @@ try:
 except (ModuleNotFoundError, ImportError):
     wandb = None
 
+try:
+    import optuna
+except (ModuleNotFoundError, ImportError):
+    wandb = None
+
 assert ai4water.__version__ >= "1.06", f"""
     Your current ai4water version is {ai4water.__version__}.
     Please upgrade your ai4water version to at least 1.06 using
@@ -432,8 +437,9 @@ class OptimizePipeline(PipelineMixin):
                 which means, wandb will not be utilized. For simplest case, pass
                 a dictionary with `project` as key.
                 >>> dict(project="my_project")
-                The user must however login wandb
-                before!
+                The user must however login wandb before. The behaviour of wandb is controlled
+                by `py:meth:autotab.OptimziePipeline.wb_init` , `py:meth:autotab.OptimziePipeline.wb_log`
+                and `py:meth:autotab.OptimziePipeline.wb_finish` method respectively
             **model_kwargs :
                 any additional key word arguments for ai4water's Model
 
@@ -1135,10 +1141,10 @@ class OptimizePipeline(PipelineMixin):
         # TODO, currently there are no callbacks for child iteration
         self.child_callbacks_ = [Callbacks()]
 
-        self._wb_init()
+        self.wb_init()
         return
 
-    def _wb_init(self):
+    def wb_init(self):
         """initializes the wandb"""
         if self.use_wb:
 
@@ -1157,7 +1163,6 @@ class OptimizePipeline(PipelineMixin):
             init_config = dict(
                 config = {sp.name: sp.categories for sp in self.space()},
                 notes = f"{self.mode} with {self.category}",
-                entity = "entity",
                 tags = def_tags,
                 name =  f"{self.parent_algorithm}_{text}_{os.path.basename(self.path)[-15:]}"
             )
@@ -1255,7 +1260,7 @@ class OptimizePipeline(PipelineMixin):
 
         self.reset()
 
-        skopt_cbs = self._verify_cbs(callbacks)
+        _ = self._verify_cbs(callbacks)
 
         optimizer = HyperOpt(
             self.parent_algorithm,
@@ -1281,13 +1286,13 @@ class OptimizePipeline(PipelineMixin):
         if process_results:
             self._proces_hpo_results(optimizer)
 
-        self._wb_finish()
+        self.wb_finish()
 
         setattr(self, 'optimizer_', optimizer)
 
         return res
 
-    def _wb_finish(self):
+    def wb_finish(self):
         """prepares the logs and puts them on wandb"""
         if self.use_wb and self.parent_iter_ > 0:
 
@@ -1384,33 +1389,14 @@ class OptimizePipeline(PipelineMixin):
         # distributions/historgrams of explored hyperparameters
         getattr(optimizer, "_plot_distributions")(show=False)
 
-        # convergence plot,
-        #if sr.x_iters is not None and self.backend != "skopt": # todo
-        plt.close('all')
-        getattr(optimizer, "_plot_convergence")(show=False)
-        if self.use_wb:
-            fig = plt.gcf()
-            self.wb_run_.log({"convergence": fig})
+        self._plot_convergence(optimizer)
 
         plt.close('all')
         # plot of hyperparameter space as explored by the optimizer
         if optimizer.backend != 'skopt' and len(self.space()) < 20 and skopt is not None:
             getattr(optimizer, "_plot_evaluations")()
 
-        hpo_imp = True
-        if len(optimizer.best_paras(True))>1:
-            plt.close('all')
-            try:
-                optimizer.plot_importance()
-                plt.close('all')
-                optimizer.plot_importance(plot_type="bar", show=False)
-            except (RuntimeError, AttributeError, ValueError):
-                hpo_imp = False
-                warnings.warn(f"Error encountered during fanova calculation")
-
-        if hpo_imp and self.use_wb:
-            fig = plt.gcf()
-            self.wb_run_.log({"importance": fig})
+        self._plot_imp(optimizer)
 
         if optimizer.backend == 'hyperopt':
             loss_histogram([y for y in optimizer.trials.losses()],
@@ -1429,6 +1415,50 @@ class OptimizePipeline(PipelineMixin):
                 fig = plot_contour(optimizer.study)
                 plotly.offline.plot(fig, filename=os.path.join(optimizer.opt_path, 'contours.html'),
                                     auto_open=False)
+        return
+
+    def _plot_convergence(self, optimizer):
+        # convergence plot,
+        plt.close('all')
+        getattr(optimizer, "_plot_convergence")(show=False)
+        if self.use_wb:
+            convergence = optimizer.get_convergence()
+            table = wandb.Table(
+                data=pd.DataFrame(np.column_stack([range(1, len(convergence) + 1), convergence]),
+                                  columns=["iterations", "objective_func"]))
+            self.wb_run_.log({"convergence": wandb.plot.line(table, "iterations", "objective_func",
+                                                        title="Convergence Plot")})
+        return
+
+    def _plot_imp(self, optimizer):
+        """calculates importance and plots"""
+        abs_imp, mean, std = None, None, None
+        try:
+            abs_imp, mean, std = optimizer.calc_importance(with_optuna=False)
+        except (RuntimeError, AttributeError, ValueError):
+            if optuna is not None:
+                abs_imp, mean, std = optimizer.calc_importance(with_optuna=True)
+
+            if abs_imp is None:
+                warnings.warn(f"Error encountered during fanova calculation")
+
+        if abs_imp is not None:
+            plt.close('all')
+            getattr(optimizer, "_plot_importance_as_barchart")(abs_imp, save=True)
+
+            if self.use_wb:
+                data = pd.DataFrame()
+                data["label"] = list(abs_imp.keys())
+                data['importance'] = list(abs_imp.values())
+
+                table = wandb.Table(data=data, columns=["label", "importance"])
+                self.wb_run_.log({"importance_bar_chart": wandb.plot.bar(table, "label",
+                                                             "importance", title="Importance")})
+
+        if mean is not None:
+            plt.close('all')
+            getattr(optimizer, "_plot_importance_as_boxplot")(mean, std, save=True)
+
         return
 
     def parent_objective(
@@ -1541,13 +1571,13 @@ class OptimizePipeline(PipelineMixin):
             *self.metrics_best_.loc[self.parent_iter_].fillna('').values.tolist())
         )
 
-        self._wb_log()
+        self.wb_log()
 
         self.parent_iter_ += 1
 
         return val_score
 
-    def _wb_log(self):
+    def wb_log(self):
         """logs performance metrics being monitored"""
         if self.use_wb:
             self.wb_run_.log(self.metrics_.loc[self.parent_iter_].to_dict())
