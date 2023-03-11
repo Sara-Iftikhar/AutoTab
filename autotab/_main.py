@@ -24,6 +24,7 @@ from SeqMetrics import RegressionMetrics
 from SeqMetrics import ClassificationMetrics
 
 from easy_mpl import plot
+from easy_mpl import hist
 from easy_mpl import bar_chart
 from easy_mpl import taylor_plot
 from easy_mpl import dumbbell_plot
@@ -58,7 +59,6 @@ from ai4water.hyperopt import Real
 from ai4water.hyperopt import Integer
 from ai4water.hyperopt import HyperOpt
 from ai4water.hyperopt import Categorical
-from ai4water.hyperopt.utils import loss_histogram
 from ai4water.hyperopt.utils import to_skopt_space
 from ai4water.hyperopt.utils import plot_convergence
 from ai4water.hyperopt.utils import plot_convergences
@@ -1211,7 +1211,8 @@ class OptimizePipeline(PipelineMixin):
             validation_data:Tuple[np.ndarray, np.ndarray] = None,
             previous_results:dict = None,
             process_results:bool = True,
-            callbacks:Union[Callbacks, List[Callbacks]] = None
+            callbacks:Union[Callbacks, List[Callbacks]] = None,
+            finish_wb:bool = True,
     ) -> "ai4water.hyperopt.HyperOpt":
         """
         Optimizes the pipeline for the given data.
@@ -1249,6 +1250,10 @@ class OptimizePipeline(PipelineMixin):
                 Wether to perform postprocessing of optimization of results or not.
             callbacks : list, optional (default=None)
                 list of callbacks to run
+            finish_wb : bool
+                if set to True, then ``wandb.finish`` is called at the end.
+                If set to False, then the user will have to manually call py:meth:`autotab.OptimizePipeline.wb_finish`
+                method later.
 
         Returns
         --------
@@ -1286,14 +1291,17 @@ class OptimizePipeline(PipelineMixin):
         if process_results:
             self._proces_hpo_results(optimizer)
 
-        self.wb_finish()
+        if finish_wb:
+            self.wb_finish()
 
         setattr(self, 'optimizer_', optimizer)
 
         return res
 
     def wb_finish(self):
-        """prepares the logs and puts them on wandb"""
+        """prepares the logs and puts them on wandb
+        Call this method at the end when no further loggin is required.
+        """
         if self.use_wb and self.parent_iter_ > 0:
 
             # 🐝 Create a wandb Table to log parent suppestions and metrics
@@ -1360,7 +1368,7 @@ class OptimizePipeline(PipelineMixin):
 
         return skopt_cbs
 
-    def _proces_hpo_results(self, optimizer):
+    def _proces_hpo_results(self, optimizer, importance=True):
         """
         postprocessing of hpo results
         """
@@ -1396,17 +1404,15 @@ class OptimizePipeline(PipelineMixin):
         if optimizer.backend != 'skopt' and len(self.space()) < 20 and skopt is not None:
             getattr(optimizer, "_plot_evaluations")()
 
-        self._plot_imp(optimizer)
+        if importance:
+            self._plot_imp(optimizer)
 
-        if optimizer.backend == 'hyperopt':
-            loss_histogram([y for y in optimizer.trials.losses()],
-                           save=True,
-                           fname=os.path.join(optimizer.opt_path, "loss_histogram.png")
-                           )
-            plot_hyperparameters(
-                optimizer.trials,
-                fname=os.path.join(optimizer.opt_path, "hyperparameters.png"),
-                save=True)
+        self._plot_loss_histogram(optimizer)
+
+        plot_hyperparameters(
+            getattr(optimizer, "_hpo_trials")(),
+            fname=os.path.join(optimizer.opt_path, "hyperparameters.png"),
+            save=True)
 
         if plotly is not None:
 
@@ -1415,6 +1421,23 @@ class OptimizePipeline(PipelineMixin):
                 fig = plot_contour(optimizer.study)
                 plotly.offline.plot(fig, filename=os.path.join(optimizer.opt_path, 'contours.html'),
                                     auto_open=False)
+        return
+
+    def _plot_loss_histogram(self, optimizer):
+        plt.close('all')
+        hist(
+            optimizer.func_vals(),
+            show=False,
+            edgecolor="k", grid=False,
+            ax_kws=dict(xlabel="objective function", ylabel="Frequency")
+        )
+        plt.savefig(fname=os.path.join(optimizer.opt_path, "loss_histogram.png"),
+                    bbox_inches="tight")
+
+        if self.use_wb:
+            table = wandb.Table(data=optimizer.func_vals(), columns=["scores"])
+            self.wb_run_.log({'loss_histogram': wandb.plot.histogram(table, "scores",
+                                                            title="Loss Histogram")})
         return
 
     def _plot_convergence(self, optimizer):
@@ -2033,7 +2056,6 @@ class OptimizePipeline(PipelineMixin):
             y = None,
             data = None,
             test_data = None,
-            fit_on_all_train_data:bool = True
     ) -> tuple:
         """
         Returns default performance of all models.
@@ -2056,14 +2078,6 @@ class OptimizePipeline(PipelineMixin):
                 a tuple/list of length 2 whose first element is x and second value is y.
                 The is the data on which the performance of optimized pipeline will be
                 calculated. This should only be given if ``data`` argument is not given.
-            fit_on_all_train_data : bool, optional (default=True)
-                If true, the model is trained on (training+validation) data.
-                This is based on supposition that the data is split into
-                training, validation and test sets. The optimization of
-                pipeline was performed on validation data. But now, we
-                are training the model on all available training data
-                which is (training + validation) data. If False, then
-                model is trained only on training data.
 
         Returns
         -------
@@ -2106,10 +2120,11 @@ class OptimizePipeline(PipelineMixin):
                     y_transformation=None
                 )
 
-                if fit_on_all_train_data:
-                    model.fit(*combine_train_val(train_x, train_y, (val_x, val_y)))
+                TrainX, TrainY = combine_train_val(train_x, train_y, (val_x, val_y))
+                if self.category == "ML":
+                    model.fit(TrainX, TrainY)
                 else:
-                    model.fit(x=train_x, y=train_y)
+                    model.fit(TrainX, TrainY, validation_data=(test_x, test_y))
 
                 t, p = model.predict(test_x, test_y, return_true=True)
 
@@ -2148,7 +2163,6 @@ class OptimizePipeline(PipelineMixin):
             data = None,
             test_data = None,
             metric_name: str = None,
-            fit_on_all_train_data:bool = True,
             lower_limit: Union[int, float] = None,
             upper_limit: Union[int, float] = None,
             figsize: tuple = None,
@@ -2178,14 +2192,6 @@ class OptimizePipeline(PipelineMixin):
             metric_name: str
                 The name of metric with respect to which the models have
                 to be compared. If not given, the evaluation metric is used.
-            fit_on_all_train_data : bool, optional (default=True)
-                If true, the model is trained on (training+validation) data.
-                This is based on supposition that the data is split into
-                training, validation and test sets. The optimization of
-                pipeline was performed on validation data. But now, we
-                are training the model on all available training data
-                which is (training + validation) data. If False, then
-                model is trained only on training data.
             lower_limit : float/int, optional (default=None)
                 clip the values below this value. Set this value to None to avoid
                 clipping.
@@ -2225,10 +2231,6 @@ class OptimizePipeline(PipelineMixin):
         .. _Dumbbell:
             https://easy-mpl.readthedocs.io/en/latest/plots.html#easy_mpl.dumbbell_plot
         """
-        # todo:
-        #  baseline_results returns performance on test data while
-        #  get_best_pipelien_by_model returns performance on validation data
-        #  todo: they are not comparable
 
         metric_name = metric_name or self.eval_metric
 
@@ -2236,7 +2238,6 @@ class OptimizePipeline(PipelineMixin):
             x=x,
             y=y,
             data=data,
-            fit_on_all_train_data=fit_on_all_train_data,
             test_data=test_data
         )
         plt.close('all')
@@ -2304,7 +2305,6 @@ class OptimizePipeline(PipelineMixin):
             y = None,
             data = None,
             test_data = None,
-            fit_on_all_train_data: bool = True,
             plot_bias: bool = True,
             figsize: tuple = None,
             show: bool = True,
@@ -2327,19 +2327,11 @@ class OptimizePipeline(PipelineMixin):
                 raw unprepared and unprocessed data from which x,y pairs for both
                 training and test will be prepared. It is only required if x, y
                 are not provided.
-            test_data :
+            test_data : tuple
                 a tuple/list of length 2 whose first element is x and second value
                 is y. The is the data on which the performance of optimized pipeline
                 will be calculated. This should only be given if ``data`` argument
                 is not given.
-            fit_on_all_train_data : bool, optional (default=True)
-                If true, the model is trained on (training+validation) data.
-                This is based on supposition that the data is split into
-                training, validation and test sets. The optimization of
-                pipeline was performed on validation data. But now, we
-                are training the model on all available training data
-                which is (training + validation) data. If False, then
-                model is trained only on training data.
             plot_bias : bool, optional
                 whether to plot the bias or not
             figsize : tuple, optional
@@ -2363,18 +2355,18 @@ class OptimizePipeline(PipelineMixin):
         --------
         >>> from autotab import OptimizePipeline
         >>> from ai4water.datasets import busan_beach
-        >>> data = busan_beach()
-        >>> input_features = data.columns.tolist()[0:-1]
-        >>> output_features = data.columns.tolist()[-1:]
+        >>> total_data = busan_beach()
+        >>> input_features = total_data.columns.tolist()[0:-1]
+        >>> output_features = total_data.columns.tolist()[-1:]
         >>> pl = OptimizePipeline(input_features=input_features,
         >>>                       output_features=output_features)
-        >>> results = pl.fit(data=data)
+        >>> results = pl.fit(data=total_data)
         ... # compare models with respect to evaluation metric
-        >>> pl.taylor_plot(data=data)
+        >>> pl.taylor_plot(data=total_data)
         ... # compare the models by also plotting bias value
-        >>> pl.taylor_plot(data=data, plot_bias=True)
+        >>> pl.taylor_plot(data=total_data, plot_bias=True)
         ... # get the matplotlb Figure object for further processing
-        >>> fig = pl.taylor_plot(data=data, show=False)
+        >>> fig = pl.taylor_plot(data=total_data, show=False)
 
         .. _easy_mpl:
             https://github.com/Sara-Iftikhar/easy_mpl#taylor_plot
@@ -2384,12 +2376,12 @@ class OptimizePipeline(PipelineMixin):
         """
 
         if self.taylor_plot_data_['observations']['test'] is None:
-            self.bfe_all_best_models(x=x,
-                                     y=y,
-                                     data=data,
-                                     test_data=test_data,
-                                     fit_on_all_train_data=fit_on_all_train_data,
-                                     verbosity=verbosity)
+            self.bfe_all_best_models(
+                x=x,
+                y=y,
+                data=data,
+                test_data=test_data,
+                verbosity=verbosity)
 
         ax = taylor_plot(
             show=False,
@@ -2895,7 +2887,7 @@ class OptimizePipeline(PipelineMixin):
             wpath = os.path.join(pipeline['path'], "weights")
             model.update_weights(os.path.join(wpath, find_best_weight(wpath)))
 
-        self._populate_results(model, train_x, train_y, val_x, val_y, *test_data)
+        self._populate_results(model, train_x, train_y, *test_data)
 
         return model
 
@@ -2906,7 +2898,6 @@ class OptimizePipeline(PipelineMixin):
             y = None,
             data = None,
             test_data: Union[tuple, list]=None,
-            fit_on_all_train_data: bool = True,
     )->Model:
         """
         Builds, trains and evalutes the model from a specific iteration.
@@ -2929,14 +2920,6 @@ class OptimizePipeline(PipelineMixin):
                 value is y. The is the data on which the performance of optimized
                 pipeline will be calculated. This should only be given if ``data``
                 argument is not given.
-            fit_on_all_train_data : bool, optional (default=True)
-                If true, the model is trained on (training+validation) data.
-                This is based on supposition that the data is split into
-                training, validation and test sets. The optimization of
-                pipeline was performed on validation data. But now, we
-                are training the model on all available training data
-                which is (training + validation) data. If False, then
-                model is trained only on training data.
         Returns
         -------
             an instance of trained ai4water Model
@@ -2967,7 +2950,6 @@ class OptimizePipeline(PipelineMixin):
             x_transformation=pipeline['x_transformation'],
             y_transformation=pipeline['y_transformation'],
             prefix=prefix,
-            fit_on_all_train_data=fit_on_all_train_data,
             seed=self.parent_seeds_[int(pipeline['iter_num'])-1]
         )
         return model
@@ -2980,7 +2962,6 @@ class OptimizePipeline(PipelineMixin):
             test_data:tuple = None,
             metric_name: str = None,
             model_name: str = None,
-            fit_on_all_train_data: bool = True,
             verbosity:int = 1,
     )->Model:
         """
@@ -3010,14 +2991,6 @@ class OptimizePipeline(PipelineMixin):
             model_name : str, optional
                 If given, the best version of this model will be found and built.
                 The 'best' will be decided based upon `metric_name`
-            fit_on_all_train_data : bool, optional (default=True)
-                If true, the model is trained on (training+validation) data.
-                This is based on supposition that the data is split into
-                training, validation and test sets. The optimization of
-                pipeline was performed on validation data. But now, we
-                are training the model on all available training data
-                which is (training + validation) data. If False, then
-                model is trained only on training data.
             verbosity : int, optional (default=1)
                 determines amount of information to be printed.
 
@@ -3074,7 +3047,6 @@ class OptimizePipeline(PipelineMixin):
             x_transformation=pipeline['x_transformation'],
             y_transformation=pipeline['y_transformation'],
             prefix=prefix,
-            fit_on_all_train_data=fit_on_all_train_data,
             verbosity=verbosity,
             seed=self.parent_seeds_[int(pipeline['iter_num'])-1]
         )
@@ -3094,7 +3066,6 @@ class OptimizePipeline(PipelineMixin):
             prefix:str,
             model_name=None,
             verbosity:int = 1,
-            fit_on_all_train_data:bool = True,
             seed:int = None,
     ) -> "Model":
         """builds and evaluates the model from scratch. If model_name is given,
@@ -3111,21 +3082,17 @@ class OptimizePipeline(PipelineMixin):
         if seed:
             model.seed_everything(int(seed))
 
-        if fit_on_all_train_data:
-            x, y = combine_train_val(train_x, train_y, validation_data)
+        x, y = combine_train_val(train_x, train_y, validation_data)
+
+        if self.category == "ML":
             model.fit(x, y)
-            self._populate_results(
-                model, x, y, *validation_data,
-                test_x=test_x, test_y=test_y,
-                model_name=model_name)
         else:
-            if self.category == "ML":
-                model.fit(train_x, train_y)
-            else:
-                model.fit(train_x, train_y, validation_data=validation_data)
-            self._populate_results(
-                model, train_x, train_y, *validation_data, test_x, test_y,
-                model_name=model_name)
+            model.fit(train_x, train_y, validation_data=(test_x, test_y))
+
+        self._populate_results(
+            model, x, y,
+            test_x=test_x, test_y=test_y,
+            model_name=model_name)
 
         return model
 
@@ -3134,13 +3101,11 @@ class OptimizePipeline(PipelineMixin):
             model: Model,
             train_x,
             train_y,
-            val_x,
-            val_y,
             test_x=None,
             test_y=None,
             model_name=None
     ) -> None:
-        """evaluates/makes predictions from model on traiing/validation/test data.
+        """makes predictions from model on training and test data.
         if model_name is given, model's predictions are saved in 'taylor_plot_data_'
         dictionary
         """
@@ -3148,16 +3113,11 @@ class OptimizePipeline(PipelineMixin):
         model.predict(train_x, train_y, metrics="all", plots=self._pp_plots)
 
         t, p = model.predict(
-            val_x, val_y, metrics="all", plots=self._pp_plots, return_true=True)
-
-        if test_x is not None:
-            t, p = model.predict(
-                test_x,
-                test_y,
-                metrics="all",
-                plots=self._pp_plots,
-                return_true=True)
-
+            test_x,
+            test_y,
+            metrics="all",
+            plots=self._pp_plots,
+            return_true=True)
 
         if model_name:
             self.taylor_plot_data_['observations']['test'] = t
@@ -3206,9 +3166,12 @@ class OptimizePipeline(PipelineMixin):
             t, p = model.predict_on_test_data(
                 data=data, process_results=False, return_true=True)
 
-        errors = self.Metrics(t, p, multiclass=model.is_multiclass_)
+        if callable(metric_name):
+            return metric_name(t, p)
+        else:
+            errors = self.Metrics(t, p, multiclass=model.is_multiclass_)
 
-        return getattr(errors, metric_name)()
+            return getattr(errors, metric_name)()
 
     def bfe_all_best_models(
             self,
@@ -3217,9 +3180,8 @@ class OptimizePipeline(PipelineMixin):
             data = None,
             test_data:tuple = None,
             metric_name: str = None,
-            fit_on_all_train_data: bool = True,
             verbosity:int = 0,
-    ) -> None:
+    ) -> pd.DataFrame:
         """
         builds, trains and evaluates best versions of all the models.
         The model is trained on 'training'+'validation' data.
@@ -3227,7 +3189,8 @@ class OptimizePipeline(PipelineMixin):
         Parameters
         ----------
             x :
-                the input data for training
+                the input data for training. If ``test_data`` is not given then test data
+                is extracted from ``x`` based upon ``train_fraction`` arguments.
             y :
                 the target data for training
             data :
@@ -3242,30 +3205,28 @@ class OptimizePipeline(PipelineMixin):
             metric_name : str
                 the name of metric to determine best version of a model. If not
                 given, parent_val_metric will be used.
-            fit_on_all_train_data : bool, optional (default=True)
-                If true, the model is trained on (training+validation) data.
-                This is based on supposition that the data is split into
-                training, validation and test sets. The optimization of
-                pipeline was performed on validation data. But now, we
-                are training the model on all available training data
-                which is (training + validation) data. If False, then
-                model is trained only on training data.
             verbosity : int, optional (default=0)
                 determines the amount of print information
         Returns
         -------
-        None
+        pd.DataFrame
 
         """
 
         train_x, train_y, val_x, val_y, test_x, test_y = self.verify_data(
-            x=x, y=y,  data=data,
+            x=x, y=y,
+            data=data,
             validation_data=None,
             test_data=test_data)
 
         met_name = metric_name or self.eval_metric_name
 
-        for model in self.models:
+        bst_models = pd.DataFrame(
+            columns=['model']  + self.inputs_to_transform + ['y_transformation', 'hyperparas',
+                     'seed', 'test_score'],
+            index=range(len(self.models))
+        )
+        for idx, model in enumerate(self.models):
 
             try:
                 metric_val, pipeline = self.get_best_pipeline_by_model(
@@ -3285,7 +3246,22 @@ class OptimizePipeline(PipelineMixin):
                                                      input_shape=self.input_shape,
                                                      num_outputs=self.num_outputs,
                                                      **kwargs)
-            _ = self._build_and_eval_from_scratch(
+
+                bst_models.loc[idx, 'model'] = model_name
+                bst_models.loc[idx, 'hyperparas'] = str(kwargs)
+            else:
+                model_name = list(model_config.keys())
+                assert len(model_name) == 1
+                bst_models.loc[idx, 'model'] = model_name[0]
+                bst_models.loc[idx, 'hyperparas'] = str(model_config.values())
+
+            xt = {xt['features'][0]: xt['method'] for xt in pipeline['x_transformation']}
+            bst_models.loc[idx, list(xt.keys())] = list(xt.values())
+            #bst_models.loc[idx, 'x_transformation'] = str(pipeline['x_transformation'])
+            bst_models.loc[idx, 'y_transformation'] = str(pipeline['y_transformation'])
+            bst_models.loc[idx, 'seed'] = self.parent_seeds_[int(pipeline['iter_num'])-1]
+
+            model = self._build_and_eval_from_scratch(
                 model=model_config,
                 train_x=train_x,
                 train_y=train_y,
@@ -3296,12 +3272,18 @@ class OptimizePipeline(PipelineMixin):
                 y_transformation=pipeline['y_transformation'],
                 prefix=prefix,
                 model_name=model,
-                fit_on_all_train_data=fit_on_all_train_data,
                 verbosity=verbosity,
                 seed=self.parent_seeds_[int(pipeline['iter_num'])-1],
             )
 
-        return
+            bst_models.loc[idx, 'test_score'] = self.evaluate_model(model, test_x, test_y)
+
+        if self.use_wb:
+            table = wandb.Table(data=bst_models, allow_mixed_types=True)
+            self.wb_run_.log({
+                f"best_models_wrt_{met_name}": table})
+
+        return bst_models
 
     def post_fit(
             self,
@@ -3309,7 +3291,6 @@ class OptimizePipeline(PipelineMixin):
             y = None,
             data = None,
             test_data:Union[list, tuple] = None,
-            fit_on_all_train_data:bool = True,
             show:bool = True
     ) -> None:
         """post processing of results to draw dumbbell plot and taylor plot.
@@ -3327,14 +3308,8 @@ class OptimizePipeline(PipelineMixin):
             a tuple/list of length 2 whose first element is x and second value is y.
             The is the data on which the performance of optimized pipeline will be
             calculated. This should only be given if ``data`` argument is not given.
-        fit_on_all_train_data : bool, optional (default=True)
-            If true, the model is trained on (training+validation) data.
-            This is based on supposition that the data is split into
-            training, validation and test sets. The optimization of
-            pipeline was performed on validation data. But now, we
-            are training the model on all available training data
-            which is (training + validation) data. If False, then
-            model is trained only on training data.
+            If this is not given then test data is taken either from x,y or from ``data``
+            based upon data splitting schemes.
         show : bool, optional (default=True)
             whether to show the plots or not
 
@@ -3344,16 +3319,17 @@ class OptimizePipeline(PipelineMixin):
 
         """
 
-        self.bfe_all_best_models(x=x,
-                                 y=y,
-                                 data=data,
-                                 fit_on_all_train_data=fit_on_all_train_data,
-                                 test_data=test_data)
+        self.bfe_all_best_models(
+            x=x,
+            y=y,
+            data=data,
+            test_data=test_data
+        )
+
         self.dumbbell_plot(x=x,
                            y=y,
                            data=data,
                            test_data=test_data,
-                           fit_on_all_train_data=fit_on_all_train_data,
                            metric_name=self.eval_metric,
                            show=show)
 
@@ -3363,7 +3339,6 @@ class OptimizePipeline(PipelineMixin):
                              y=y,
                              data=data,
                              test_data=test_data,
-                             fit_on_all_train_data=fit_on_all_train_data,
                              show=show)
             self.compare_models(show=show)
             self.compare_models(plot_type="bar_chart", show=show)
