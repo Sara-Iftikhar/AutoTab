@@ -1,4 +1,6 @@
 
+__all__ = ["OptimizePipeline", "METRIC_TYPES"]
+
 import os
 import gc
 import json
@@ -184,6 +186,7 @@ class PipelineMixin(object):
     taylor_plot_data_ = AttributeNotSetYet()
     child_callbacks_ = AttributeNotSetYet()
     CHILD_PREFIX_ = AttributeNotSetYet()
+    wb_run_ = AttributeNotSetYet()
 
     def __init__(
             self,
@@ -438,8 +441,8 @@ class OptimizePipeline(PipelineMixin):
                 a dictionary with `project` as key.
                 >>> dict(project="my_project")
                 The user must however login wandb before. The behaviour of wandb is controlled
-                by `py:meth:autotab.OptimziePipeline.wb_init` , `py:meth:autotab.OptimziePipeline.wb_log`
-                and `py:meth:autotab.OptimziePipeline.wb_finish` method respectively
+                by `py:meth:autotab.OptimizePipeline.wb_init` , `py:meth:autotab.OptimziePipeline.wb_log`
+                and `py:meth:autotab.OptimizePipeline.wb_finish` method respectively
             **model_kwargs :
                 any additional key word arguments for ai4water's Model
 
@@ -1153,9 +1156,21 @@ class OptimizePipeline(PipelineMixin):
             else:
                 text = "no_hpo"
 
+            target = self.output_features
+            if isinstance(target, list):
+                target = target[0]
             def_tags = [self.category, self.mode, self.parent_algorithm,
                         f"{len(self.models)}_models", f"{self.num_ins}_inputs",
                         self.eval_metric_name]
+
+            if self.child_iterations>0 and self.cv_child_hpo:
+                def_tags += [f"child_hpo_{self.cv_child_hpo}"]
+
+            if self.cv_parent_hpo:
+                def_tags += [f"parent_hpo_{self.cv_parent_hpo}"]
+
+            def_tags += [f"{len(self.inputs_to_transform)}_inputs_to_transform"]
+            def_tags += [f"target_{target}"]
 
             if self.mode == "classification":
                 def_tags += [f"{self.num_classes}_classes"]
@@ -1164,7 +1179,7 @@ class OptimizePipeline(PipelineMixin):
                 config = {sp.name: sp.categories for sp in self.space()},
                 notes = f"{self.mode} with {self.category}",
                 tags = def_tags,
-                name =  f"{self.parent_algorithm}_{text}_{os.path.basename(self.path)[-15:]}"
+                name =  f"{target}_{self.parent_algorithm}_{text}_{os.path.basename(self.path)[-15:]}"
             )
 
             init_config.update(self.wandb_config)
@@ -1252,7 +1267,7 @@ class OptimizePipeline(PipelineMixin):
                 list of callbacks to run
             finish_wb : bool
                 if set to True, then ``wandb.finish`` is called at the end.
-                If set to False, then the user will have to manually call py:meth:`autotab.OptimizePipeline.wb_finish`
+                If set to False, then the user will have to manually call py:meth:`autotab._main.OptimizePipeline.wb_finish`
                 method later.
 
         Returns
@@ -1267,6 +1282,11 @@ class OptimizePipeline(PipelineMixin):
 
         _ = self._verify_cbs(callbacks)
 
+        kws = {}
+        # todo, creating space for random and grid with sklearn gives OOM error
+        if self.parent_algorithm in ["random", "grid"]:
+            kws['backend'] = "optuna"
+
         optimizer = HyperOpt(
             self.parent_algorithm,
             param_space=self.space(),
@@ -1275,6 +1295,7 @@ class OptimizePipeline(PipelineMixin):
             opt_path=self.path,
             verbosity = 0,
             process_results=False,
+            **kws
         )
 
         if previous_results is not None:
@@ -1289,7 +1310,7 @@ class OptimizePipeline(PipelineMixin):
         res = optimizer.fit(x=train_x, y=train_y, validation_data = (val_x, val_y))
 
         if process_results:
-            self._proces_hpo_results(optimizer)
+            self.proces_hpo_results(optimizer)
 
         if finish_wb:
             self.wb_finish()
@@ -1299,7 +1320,8 @@ class OptimizePipeline(PipelineMixin):
         return res
 
     def wb_finish(self):
-        """prepares the logs and puts them on wandb
+        """
+        prepares the logs and puts them on wandb
         Call this method at the end when no further loggin is required.
         """
         if self.use_wb and self.parent_iter_ > 0:
@@ -1368,7 +1390,12 @@ class OptimizePipeline(PipelineMixin):
 
         return skopt_cbs
 
-    def _proces_hpo_results(self, optimizer, importance=True):
+    def proces_hpo_results(
+            self,
+            optimizer,
+            importance:bool = True,
+            hyperparameters:bool = True,
+    ):
         """
         postprocessing of hpo results
         """
@@ -1409,10 +1436,11 @@ class OptimizePipeline(PipelineMixin):
 
         self._plot_loss_histogram(optimizer)
 
-        plot_hyperparameters(
-            getattr(optimizer, "_hpo_trials")(),
-            fname=os.path.join(optimizer.opt_path, "hyperparameters.png"),
-            save=True)
+        if hyperparameters and optimizer.algorithm != "atpe":
+            plot_hyperparameters(
+                getattr(optimizer, "_hpo_trials")(),
+                fname=os.path.join(optimizer.opt_path, "hyperparameters.png"),
+                save=True)
 
         if plotly is not None:
 
@@ -1435,7 +1463,9 @@ class OptimizePipeline(PipelineMixin):
                     bbox_inches="tight")
 
         if self.use_wb:
-            table = wandb.Table(data=optimizer.func_vals(), columns=["scores"])
+            table = wandb.Table(
+                data=pd.DataFrame(optimizer.func_vals(), columns=["scores"]),
+                                columns=["scores"])
             self.wb_run_.log({'loss_histogram': wandb.plot.histogram(table, "scores",
                                                             title="Loss Histogram")})
         return
@@ -2129,8 +2159,12 @@ class OptimizePipeline(PipelineMixin):
                 t, p = model.predict(test_x, test_y, return_true=True)
 
                 errors = self.Metrics(t, p, multiclass=model.is_multiclass_)
-                val_scores[model_name] = getattr(errors, self.eval_metric)(
-                    **METRICS_KWARGS.get(self.eval_metric, {}))
+
+                if callable(self.eval_metric):
+                    val_scores[model_name] = self.eval_metric(t, p)
+                else:
+                    val_scores[model_name] = getattr(errors, self.eval_metric)(
+                        **METRICS_KWARGS.get(self.eval_metric, {}))
 
                 _metrics = {}
                 for m, mn in zip(self.monitor, self.monitor_names):
@@ -2151,6 +2185,13 @@ class OptimizePipeline(PipelineMixin):
             fpath = os.path.join(self.path, "baselines", "results.json")
             with open(fpath, 'w') as fp:
                 json.dump(results, fp, sort_keys=True, indent=4)
+
+            if self.use_wb:
+                data = pd.DataFrame.from_dict(metrics).T
+                data.loc[list(val_scores.keys()), 'val_score'] = list(val_scores.values())
+                data = data.reset_index()
+                table = wandb.Table(data=data, allow_mixed_types=True)
+                self.wb_run_.log({"baseline_results": table})
         else:
             val_scores, metrics = self.baseline_results_.values()
 
@@ -2508,13 +2549,18 @@ class OptimizePipeline(PipelineMixin):
     The given parent iterations were {self.parent_iterations} but optimization 
     stopped early"""
 
-        if hasattr(self, 'exc_type_'):
+        if getattr(self, 'exc_type_', None):
             text += f"""
     Execution was stopped due to {str(self.exc_type_)} with {str(self.exc_val_)}
     """
 
         for metric in self.monitor_names:
             text += self.metric_report(metric)
+
+        if self.use_wb and self.parent_iter_>0:
+            text += f"The results are logged at {self.wb_run_.url}"
+
+        text += f"The version of different libraries is as follows: \n {self._version_info()}"
 
         if write:
             rep_fpath = os.path.join(self.path, "report.txt")
@@ -3221,9 +3267,17 @@ class OptimizePipeline(PipelineMixin):
 
         met_name = metric_name or self.eval_metric_name
 
+        columns = ['model']  + self.inputs_to_transform
+        if self.child_iterations>0:
+            columns += ['hyperparas']
+
+        if self.outputs_to_transform is not None:
+            columns += ['y_transformation']
+
+        columns += ['seed', 'test_score', 'iteration']
+
         bst_models = pd.DataFrame(
-            columns=['model']  + self.inputs_to_transform + ['y_transformation', 'hyperparas',
-                     'seed', 'test_score'],
+            columns=columns,
             index=range(len(self.models))
         )
         for idx, model in enumerate(self.models):
@@ -3248,18 +3302,25 @@ class OptimizePipeline(PipelineMixin):
                                                      **kwargs)
 
                 bst_models.loc[idx, 'model'] = model_name
-                bst_models.loc[idx, 'hyperparas'] = str(kwargs)
+
+                if self.child_iterations>0:
+                    bst_models.loc[idx, 'hyperparas'] = str(kwargs)
             else:
                 model_name = list(model_config.keys())
                 assert len(model_name) == 1
                 bst_models.loc[idx, 'model'] = model_name[0]
-                bst_models.loc[idx, 'hyperparas'] = str(model_config.values())
+
+                if self.child_iterations > 0:
+                    bst_models.loc[idx, 'hyperparas'] = str(model_config.values())
 
             xt = {xt['features'][0]: xt['method'] for xt in pipeline['x_transformation']}
             bst_models.loc[idx, list(xt.keys())] = list(xt.values())
-            #bst_models.loc[idx, 'x_transformation'] = str(pipeline['x_transformation'])
-            bst_models.loc[idx, 'y_transformation'] = str(pipeline['y_transformation'])
+
+            if self.outputs_to_transform is not None:
+                bst_models.loc[idx, 'y_transformation'] = str(pipeline['y_transformation'])
             bst_models.loc[idx, 'seed'] = self.parent_seeds_[int(pipeline['iter_num'])-1]
+
+            bst_models.loc[idx, 'iteration'] = pipeline['iter_num']
 
             model = self._build_and_eval_from_scratch(
                 model=model_config,
