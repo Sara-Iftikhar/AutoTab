@@ -93,16 +93,18 @@ class EarlyStopperMinImp(EarlyStopper):
         return None
 
 
-def data_to_h5(filepath, x, y, val_x, val_y, test_x, test_y):
+def data_to_h5(filepath, x, y, val_x=None, val_y=None, test_x=None, test_y=None):
     import h5py
 
     f = h5py.File(filepath, mode='w')
 
     _save_data_to_hdf5('training_data', x, y, f)
 
-    _save_data_to_hdf5('validation_data', val_x, val_y, f)
+    if val_x is not None:
+        _save_data_to_hdf5('validation_data', val_x, val_y, f)
 
-    _save_data_to_hdf5('test_data', test_x, test_y, f)
+    if test_x is not None:
+        _save_data_to_hdf5('test_data', test_x, test_y, f)
 
     f.close()
     return

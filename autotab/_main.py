@@ -175,8 +175,8 @@ class PipelineMixin(object):
     child_iter_ = AttributeNotSetYet()
     val_scores_ = AttributeNotSetYet()
     metrics_best_ = AttributeNotSetYet()
-    parent_seeds_ = AttributeNotSetYet()
-    child_seeds_ = AttributeNotSetYet()
+    #parent_seeds_ = AttributeNotSetYet()
+    #child_seeds_ = AttributeNotSetYet()
     child_val_scores_ = AttributeNotSetYet()
     baseline_results_ = AttributeNotSetYet()
     start_time_ = AttributeNotSetYet()
@@ -599,6 +599,8 @@ class OptimizePipeline(PipelineMixin):
             self.use_wb = True
         self.wandb_config = wandb_config
 
+        self.seed = 313
+
         # information about transformations which are to be modified
         self._tr_modifications = {}
 
@@ -670,6 +672,14 @@ class OptimizePipeline(PipelineMixin):
     @use_wb.setter
     def use_wb(self, x):
         self._use_wb = x
+
+    @property
+    def seed(self):
+        return self._seed
+
+    @seed.setter
+    def seed(self, x):
+        self._seed = x
 
     @property
     def mode(self):
@@ -1092,9 +1102,6 @@ class OptimizePipeline(PipelineMixin):
     def test_data(self, *args, **kwargs)->Tuple[np.ndarray, np.ndarray]:
         raise NotImplementedError
 
-    def _save_data(self, *args, **kwargs)->None:
-        raise NotImplementedError
-
     def reset(self):
         # called at the start of fit method
 
@@ -1114,8 +1121,8 @@ class OptimizePipeline(PipelineMixin):
         metrics_best = np.full((self.parent_iterations, len(self.monitor)), np.nan)
         self.metrics_best_ = pd.DataFrame(metrics_best, columns=self.monitor_names)
 
-        self.parent_seeds_ = np.random.randint(0, 10000, self.parent_iterations)
-        self.child_seeds_ = np.random.randint(0, 10000, self.max_child_iters)
+        #self.parent_seeds_ = np.random.randint(0, 10000, self.parent_iterations)
+        #self.child_seeds_ = np.random.randint(0, 10000, self.max_child_iters)
 
         # each row indicates parent iteration, column indicates child iteration
         self.child_val_scores_ = np.full((self.parent_iterations,
@@ -1160,7 +1167,7 @@ class OptimizePipeline(PipelineMixin):
             if isinstance(target, list):
                 target = target[0]
             def_tags = [self.category, self.mode, self.parent_algorithm,
-                        f"{len(self.models)}_models", f"{self.num_ins}_inputs",
+                        f"{len(self.models)}_models", f"{self.num_ins}_total_inputs",
                         self.eval_metric_name]
 
             if self.child_iterations>0 and self.cv_child_hpo:
@@ -1179,7 +1186,7 @@ class OptimizePipeline(PipelineMixin):
                 config = {sp.name: sp.categories for sp in self.space()},
                 notes = f"{self.mode} with {self.category}",
                 tags = def_tags,
-                name =  f"{target}_{self.parent_algorithm}_{text}_{os.path.basename(self.path)[-15:]}"
+                name =  f"{target[0:7]}_{self.parent_algorithm}_{text}_{os.path.basename(self.path)[-15:]}"
             )
 
             init_config.update(self.wandb_config)
@@ -1276,7 +1283,7 @@ class OptimizePipeline(PipelineMixin):
             optimization.
         """
 
-        train_x, train_y, val_x, val_y, _, _ = self.verify_data(x, y, data, validation_data)
+        train_x, train_y, val_x, val_y = self.verify_data(x, y, data, validation_data)
 
         self.reset()
 
@@ -1333,16 +1340,20 @@ class OptimizePipeline(PipelineMixin):
             )
 
             df['iterations'] = self.parent_suggestions_.keys()
-            df['seeds'] = self.parent_seeds_
 
             df = pd.concat([df, self.metrics_], axis=1)
 
-            df['hyperparas'] = [list(val['model'].values())[0] for val in self.parent_suggestions_.values()]
+            if self.child_iterations>0:
+                df['hyperparas'] = [list(val['model'].values())[0] for val in self.parent_suggestions_.values()]
 
             table = wandb.Table(data=df, allow_mixed_types=True,
                                 columns=df.columns.tolist())
 
             self.wb_run_.log({"result": table})
+
+            # histograms of explored models, transformations
+            self.wb_run_.log({'model_histogram': wandb.plot.histogram(table, "model",
+                                                            title="Explored Models")})
 
             if self.child_iter_>0:
                 table = wandb.Table(
@@ -1584,7 +1595,7 @@ class OptimizePipeline(PipelineMixin):
         # set the global seed. This is only for internal use so that results
         # become more reproducible
         # when the model is built again
-        _model.seed_everything(int(self.parent_seeds_[self.parent_iter_]))
+        _model.seed_everything(self.seed)
 
         self.parent_suggestions_[self.parent_iter_] = {
             # 'seed': self.seed,
@@ -1668,7 +1679,7 @@ class OptimizePipeline(PipelineMixin):
                 batch_size=int(batch_size)
             )
 
-            _model.seed_everything(int(self.child_seeds_[self.child_iter_]))
+            _model.seed_everything(self.seed)
 
             val_score = self._fit_and_eval(
                 x,
@@ -1798,7 +1809,8 @@ class OptimizePipeline(PipelineMixin):
             self,
             cpath:str
     )->Model:
-        """builds ai4water model from config.
+        """
+        builds ai4water model from config.
         If the user overwrites `py:meth:build_model`, then the user must also
         overwrite this function. Otherwise post-processing will not work
 
@@ -1890,7 +1902,8 @@ class OptimizePipeline(PipelineMixin):
             model.fit(x=train_x, y=train_y)
 
         for cbk in callbacks:
-            getattr(cbk, 'on_fit_end')(x=train_x, y=train_y, validation_data=validation_data)
+            getattr(cbk, 'on_fit_end')(
+                x=train_x, y=train_y, validation_data=validation_data)
 
         #  evaluate the model to calculate val_score
         return self._eval_model_manually(
@@ -1919,9 +1932,11 @@ class OptimizePipeline(PipelineMixin):
             list of callbacks, which can be for parent or child
         """
         if cross_validate:
-            return self._cv_and_eval(train_x, train_y, validation_data, model, callbacks)
+            return self._cv_and_eval(
+                train_x, train_y, validation_data, model, callbacks)
         else:
-            return self.__fit_and_eval(train_x, train_y, validation_data, model, eval_metrics, callbacks)
+            return self.__fit_and_eval(
+                train_x, train_y, validation_data, model, eval_metrics, callbacks)
 
     def get_best_metric(
             self,
@@ -2117,11 +2132,10 @@ class OptimizePipeline(PipelineMixin):
             - a dictionary of metrics being monitored for  each model on test data.
         """
 
-        train_x, train_y, val_x, val_y, test_x, test_y = self.verify_data(
+        TrainX, TrainY, test_x, test_y = self.verify_data1(
             x,
             y,
-            data,
-            validation_data=None,
+            data=data,
             test_data=test_data
         )
 
@@ -2150,7 +2164,6 @@ class OptimizePipeline(PipelineMixin):
                     y_transformation=None
                 )
 
-                TrainX, TrainY = combine_train_val(train_x, train_y, (val_x, val_y))
                 if self.category == "ML":
                     model.fit(TrainX, TrainY)
                 else:
@@ -2255,18 +2268,18 @@ class OptimizePipeline(PipelineMixin):
         --------
         >>> from autotab import OptimizePipeline
         >>> from ai4water.datasets import busan_beach
-        >>> data = busan_beach()
-        >>> input_features = data.columns.tolist()[0:-1]
-        >>> output_features = data.columns.tolist()[-1:]
+        >>> total_data = busan_beach()
+        >>> input_features = total_data.columns.tolist()[0:-1]
+        >>> output_features = total_data.columns.tolist()[-1:]
         >>> pl = OptimizePipeline(input_features=input_features,
         >>>                       output_features=output_features)
-        >>> results = pl.fit(data=data)
+        >>> results = pl.fit(data=total_data)
         ... # compare models with respect to evaluation metric
-        >>> pl.dumbbell_plot(data=data)
+        >>> pl.dumbbell_plot(data=total_data)
         ... # compare the models by also plotting bias value
-        >>> pl.dumbbell_plot(data=data, metric_name="r2_score")
+        >>> pl.dumbbell_plot(data=total_data, metric_name="r2_score")
         ... # get the matplotlb axes for further processing
-        >>> ax = pl.dumbbell_plot(data=data, metric_name="r2_score",
+        >>> axes = pl.dumbbell_plot(data=total_data, metric_name="r2_score",
         ...       lower_limit=0.0, show=False)
 
         .. _Dumbbell:
@@ -2500,11 +2513,11 @@ class OptimizePipeline(PipelineMixin):
                 self.child_val_scores_,
                 columns=[f'child_iter_{i}' for i in range(self.max_child_iters)]).to_csv(fpath)
 
-            fpath = os.path.join(self.path, 'child_seeds.csv')
-            pd.DataFrame(self.child_seeds_, columns=['child_seeds']).to_csv(fpath, index=False)
+            #fpath = os.path.join(self.path, 'child_seeds.csv')
+            #pd.DataFrame(self.child_seeds_, columns=['child_seeds']).to_csv(fpath, index=False)
 
-            fpath = os.path.join(self.path, 'parent_seeds.csv')
-            pd.DataFrame(self.parent_seeds_, columns=['parent_seeds']).to_csv(fpath, index=False)
+            #fpath = os.path.join(self.path, 'parent_seeds.csv')
+            #pd.DataFrame(self.parent_seeds_, columns=['parent_seeds']).to_csv(fpath, index=False)
         return
 
     def metric_report(self, metric_name: str) -> str:
@@ -2560,7 +2573,10 @@ class OptimizePipeline(PipelineMixin):
         if self.use_wb and self.parent_iter_>0:
             text += f"The results are logged at {self.wb_run_.url}"
 
-        text += f"The version of different libraries is as follows: \n {self._version_info()}"
+        text += f"\nThe version of different libraries is as follows:\n"
+
+        for lib, ver in self._version_info().items():
+            text += f"{lib}: {ver}\n"
 
         if write:
             rep_fpath = os.path.join(self.path, "report.txt")
@@ -2746,10 +2762,6 @@ class OptimizePipeline(PipelineMixin):
         pl.parent_prefix_ = os.path.basename(path)
         pl.path = path
 
-        fpath = os.path.join(path, 'parent_seeds.csv')
-        if os.path.exists(fpath):
-            pl.parent_seeds_ = pd.read_csv(fpath).values
-
         fpath = os.path.join(path, "baselines", "results.json")
         pl.baseline_results_ = None
         if os.path.exists(fpath):
@@ -2791,11 +2803,10 @@ class OptimizePipeline(PipelineMixin):
         if test_data is None:
             test_data = (None, None)
 
-        train_x, train_y, val_x, val_y, test_x, test_y = self.verify_data(
+        train_x, train_y, test_x, test_y = self.verify_data1(
             x=x,
             y=y,
             data=data,
-            validation_data=None,
             test_data=test_data,
             save=True,
             save_name="from_scratch"
@@ -2809,8 +2820,10 @@ class OptimizePipeline(PipelineMixin):
             y_transformation=pipeline['y_transformation']
         )
 
-        x, y = combine_train_val(train_x, train_y, (val_x, val_y))
-        model.fit(x, y)
+        if self.category == "ML":
+            model.fit(train_x, train_y)
+        else:
+            model.fit(train_x, train_y, validation_data=(test_x, test_y))
 
         return model
 
@@ -2908,11 +2921,10 @@ class OptimizePipeline(PipelineMixin):
         if test_data is None:
             test_data = (None, None)
 
-        train_x, train_y, val_x, val_y, *test_data = self.verify_data(
+        train_x, train_y, *test_data = self.verify_data1(
             x=x,
             y=y,
             data=data,
-            validation_data=None,
             test_data=test_data)
 
         pipeline = self.get_best_pipeline(metric_name, model_name)
@@ -2973,11 +2985,10 @@ class OptimizePipeline(PipelineMixin):
         if test_data is None:
             test_data = (None, None)
 
-        train_x, train_y, val_x, val_y, test_x, test_y = self.verify_data(
+        train_x, train_y, test_x, test_y = self.verify_data1(
             x=x,
             y=y,
             data=data,
-            validation_data=None,
             test_data=test_data,
             save=True,
             save_name="from_scratch_all"
@@ -2990,13 +3001,11 @@ class OptimizePipeline(PipelineMixin):
             model=pipeline['model'],
             train_x=train_x,
             train_y=train_y,
-            validation_data=(val_x, val_y),
             test_x=test_x,
             test_y=test_y,
             x_transformation=pipeline['x_transformation'],
             y_transformation=pipeline['y_transformation'],
             prefix=prefix,
-            seed=self.parent_seeds_[int(pipeline['iter_num'])-1]
         )
         return model
 
@@ -3047,10 +3056,9 @@ class OptimizePipeline(PipelineMixin):
         if test_data is None:
             test_data = (None, None)
 
-        train_x, train_y, val_x, val_y, test_x, test_y = self.verify_data(
+        train_x, train_y, test_x, test_y = self.verify_data1(
             x=x, y=y,
             data=data,
-            validation_data=None,
             test_data=test_data,
             save=True,
             save_name="from_scracth"
@@ -3087,14 +3095,12 @@ class OptimizePipeline(PipelineMixin):
             model=model_config,
             train_x=train_x,
             train_y = train_y,
-            validation_data=(val_x, val_y),
             test_x=test_x,
             test_y=test_y,
             x_transformation=pipeline['x_transformation'],
             y_transformation=pipeline['y_transformation'],
             prefix=prefix,
             verbosity=verbosity,
-            seed=self.parent_seeds_[int(pipeline['iter_num'])-1]
         )
 
         return model
@@ -3104,7 +3110,6 @@ class OptimizePipeline(PipelineMixin):
             model: Union[str, dict],
             train_x,
             train_y,
-            validation_data,
             test_x,
             test_y,
             x_transformation: Union[str, dict],
@@ -3112,7 +3117,6 @@ class OptimizePipeline(PipelineMixin):
             prefix:str,
             model_name=None,
             verbosity:int = 1,
-            seed:int = None,
     ) -> "Model":
         """builds and evaluates the model from scratch. If model_name is given,
         model's predictions are saved in 'taylor_plot_data_' dictionary
@@ -3125,18 +3129,15 @@ class OptimizePipeline(PipelineMixin):
             verbosity=verbosity
         )
 
-        if seed:
-            model.seed_everything(int(seed))
-
-        x, y = combine_train_val(train_x, train_y, validation_data)
+        model.seed_everything(self.seed)
 
         if self.category == "ML":
-            model.fit(x, y)
+            model.fit(train_x, train_y)
         else:
             model.fit(train_x, train_y, validation_data=(test_x, test_y))
 
         self._populate_results(
-            model, x, y,
+            model, train_x, train_y,
             test_x=test_x, test_y=test_y,
             model_name=model_name)
 
@@ -3259,10 +3260,9 @@ class OptimizePipeline(PipelineMixin):
 
         """
 
-        train_x, train_y, val_x, val_y, test_x, test_y = self.verify_data(
+        train_x, train_y, test_x, test_y = self.verify_data1(
             x=x, y=y,
             data=data,
-            validation_data=None,
             test_data=test_data)
 
         met_name = metric_name or self.eval_metric_name
@@ -3274,7 +3274,7 @@ class OptimizePipeline(PipelineMixin):
         if self.outputs_to_transform is not None:
             columns += ['y_transformation']
 
-        columns += ['seed', 'test_score', 'iteration']
+        columns += ['test_score', 'iteration']
 
         bst_models = pd.DataFrame(
             columns=columns,
@@ -3317,8 +3317,15 @@ class OptimizePipeline(PipelineMixin):
             bst_models.loc[idx, list(xt.keys())] = list(xt.values())
 
             if self.outputs_to_transform is not None:
-                bst_models.loc[idx, 'y_transformation'] = str(pipeline['y_transformation'])
-            bst_models.loc[idx, 'seed'] = self.parent_seeds_[int(pipeline['iter_num'])-1]
+                y_transformation = pipeline['y_transformation']
+                if isinstance(y_transformation, list):
+                    if len(y_transformation) > 0:
+                        assert len(y_transformation)==1, y_transformation
+                        y_transformation = y_transformation[0]
+                        bst_models.loc[idx, 'y_transformation'] = y_transformation['method']
+                else:
+                    assert isinstance(y_transformation, dict), y_transformation
+                    bst_models.loc[idx, 'y_transformation'] = y_transformation['method']
 
             bst_models.loc[idx, 'iteration'] = pipeline['iter_num']
 
@@ -3326,7 +3333,7 @@ class OptimizePipeline(PipelineMixin):
                 model=model_config,
                 train_x=train_x,
                 train_y=train_y,
-                validation_data=(val_x, val_y),
+                #validation_data=(val_x, val_y),
                 test_x=test_x,
                 test_y = test_y,
                 x_transformation=pipeline['x_transformation'],
@@ -3334,10 +3341,10 @@ class OptimizePipeline(PipelineMixin):
                 prefix=prefix,
                 model_name=model,
                 verbosity=verbosity,
-                seed=self.parent_seeds_[int(pipeline['iter_num'])-1],
             )
 
-            bst_models.loc[idx, 'test_score'] = self.evaluate_model(model, test_x, test_y)
+            bst_models.loc[idx, 'test_score'] = self.evaluate_model(
+                model, test_x, test_y, metric_name=met_name)
 
         if self.use_wb:
             table = wandb.Table(data=bst_models, allow_mixed_types=True)
@@ -3613,13 +3620,90 @@ class OptimizePipeline(PipelineMixin):
 
         return val_score
 
+    def verify_data1(
+            self,
+            x=None,
+            y=None,
+            test_data=None,
+            data=None,
+            save:bool= False,
+            save_name:str = ''
+    ):
+        """
+        only x,y should be given
+        or x,y and test_data should be given
+        or only data should be given
+        test_data, if given should only be given as tuple
+        every other combination of x,y, data and test_data will raise error
+        """
+
+        model_maker = make_model(**self.model_kwargs)
+        data_config = model_maker.data_config
+
+        if isinstance(y, (pd.DataFrame, pd.Series)):
+            y = y.values
+        if y is not None:
+            assert isinstance(y, np.ndarray)
+
+        if x is None:
+            # case 3: only data are given
+            assert y is None
+            assert data is not None
+
+            dataset = DataSet(data=data,
+                              save=data_config.pop('save') or True,
+                              category = self.category,
+                              **data_config)
+            train_x, train_y = dataset.training_data()
+            val_x, val_y = dataset.validation_data()
+            train_x, train_y = combine_train_val(train_x, train_y, validation_data=(val_x, val_y))
+            test_x, test_y = dataset.test_data()
+
+        elif test_data is None:
+            # case 1 only x,y are given
+            assert data is None
+            assert y is not None
+
+            if y.ndim == 1:
+                y = y.reshape(-1, 1)
+            data = pd.DataFrame(np.concatenate([x, y], axis=1), columns=self.all_features)
+            dataset = DataSet(data=data,
+                              save=data_config.pop('save') or True,
+                              category=self.category,
+                              **data_config)
+            train_x, train_y = dataset.training_data()
+            val_x, val_y = dataset.validation_data()
+            train_x, train_y = combine_train_val(train_x, train_y, validation_data=(val_x, val_y))
+            test_x, test_y = dataset.test_data()
+
+        else:
+            # case 2 x,y and test_data are given
+            assert data is None
+            assert x is not None
+            assert y is not None
+            assert test_data is not None
+            train_x, train_y = x, y
+            assert isinstance(test_data, (tuple, list))
+            assert len(test_data)==2
+            test_x, test_y = test_data
+
+        if save:
+            self._save_data(train_x, train_y, test_x, test_y, "validation", save_name)
+
+        if train_x.ndim > 2 and 'murphy' in self._pp_plots:
+            self._pp_plots.remove('murphy')
+
+        train_y = self._verify_output(train_y)
+        test_y = self._verify_output(test_y)
+
+        return train_x, train_y, test_x, test_y
+
     def verify_data(
             self,
             x=None,
             y=None,
             data=None,
             validation_data=None,
-            test_data = None,
             save:bool= False,
             save_name:str = ''
     )->tuple:
@@ -3632,11 +3716,6 @@ class OptimizePipeline(PipelineMixin):
         """
         model_maker = make_model(**self.model_kwargs)
         data_config = model_maker.data_config
-
-        if test_data is None:
-            test_data = (None, None)
-
-        test_x, test_y = test_data
 
         def num_examples(samples):
             if isinstance(samples, list):
@@ -3654,7 +3733,6 @@ class OptimizePipeline(PipelineMixin):
             assert y is None, f"y must only be given if x is given. x is {type(x)}"
             assert data is not None, f"if x is given, data must not be given"
             assert validation_data is None, f"validation data must only be given if x is given"
-            assert test_x is None, f"test data must only be given if x is given"
             assert isinstance(data, pd.DataFrame), f"data must be dataframe, but it is {type(data)}"
             dataset = DataSet(data=data,
                               save=data_config.pop('save') or True,
@@ -3662,7 +3740,6 @@ class OptimizePipeline(PipelineMixin):
                               **data_config)
             train_x, train_y = dataset.training_data()
             val_x, val_y = dataset.validation_data()
-            test_x, test_y = dataset.test_data()
 
         else:
             assert y is not None, f"if x is given, corresponding y must also be given"
@@ -3685,7 +3762,6 @@ class OptimizePipeline(PipelineMixin):
                                   **data_config)
                 train_x, train_y = dataset.training_data()
                 val_x, val_y = dataset.validation_data()
-                test_x, test_y = dataset.test_data()
 
             else:
                 # case 2: x,y and validation_data should be given
@@ -3706,25 +3782,42 @@ class OptimizePipeline(PipelineMixin):
                     val_y = val_y.values
 
         if save:
-            try:
-                import h5py
-                filepath = os.path.join(self.path, f"data_{save_name}.h5")
-                data_to_h5(filepath, train_x, train_y, val_x, val_y, test_x, test_y)
-            except (ModuleNotFoundError, ImportError):
-                data_to_csv(os.path.join(self.path, f"training_data_{save_name}.csv"), self.all_features, train_x, train_y)
-                data_to_csv(os.path.join(self.path, f"validation_data_{save_name}.csv"), self.all_features, val_x, val_y)
-                data_to_csv(os.path.join(self.path, f"test_data_{save_name}.csv"), self.all_features, test_x, test_y)
+            self._save_data(train_x, train_y, val_x, val_y, 'validation', save_name)
 
         if train_x.ndim > 2 and 'murphy' in self._pp_plots:
             self._pp_plots.remove('murphy')
 
-        train_y = self._verify_ouput(train_y)
-        val_y = self._verify_ouput(val_y)
-        test_y = self._verify_ouput(test_y)
+        train_y = self._verify_output(train_y)
+        val_y = self._verify_output(val_y)
 
-        return train_x, train_y, val_x, val_y, test_x, test_y
+        return train_x, train_y, val_x, val_y
 
-    def _verify_ouput(self, outputs):
+    def _save_data(
+            self,
+            train_x,
+            train_y,
+            other_x,
+            other_y,
+            other_name,
+            save_name,
+    ):
+
+        assert other_name in ("validation", "test")
+        try:
+            import h5py
+            filepath = os.path.join(self.path, f"data_{save_name}.h5")
+            if other_name == "validation":
+                data_to_h5(filepath, train_x, train_y, val_x=other_x, val_y=other_y)
+            else:
+                data_to_h5(filepath, train_x, train_y, test_x=other_x, test_y=other_y)
+        except (ModuleNotFoundError, ImportError):
+            fname = os.path.join(self.path, f"training_data_{save_name}.csv")
+            data_to_csv(fname, self.all_features, train_x, train_y)
+            fname = os.path.join(self.path, f"{other_name}_data_{save_name}.csv")
+            data_to_csv(fname, self.all_features, other_x, other_y)
+        return
+
+    def _verify_output(self, outputs):
         if outputs is not None:
             if self.mode == 'classification':
                 if isinstance(outputs, np.ndarray):
