@@ -137,7 +137,7 @@ class TestMisc(unittest.TestCase):
             parent_iterations=4,
         )
         pl.fit(data=rgr_data, process_results=False)
-        pl.post_fit(data=rgr_data, fit_on_all_train_data=False, show=self.show)
+        pl.post_fit(data=rgr_data, show=self.show)
 
         return
 
@@ -301,9 +301,10 @@ class TestMisc(unittest.TestCase):
             child_iterations=0,
             parent_iterations=10,
             parent_algorithm="random",
-            wandb_config = dict(project="ab_isl", entity="atherabbas")
+            wandb_config = dict(project="autotab_test", entity="atherabbas")
         )
         pl.fit(x=train_x, y=train_y, validation_data=(val_x, val_y), process_results=False)
+        return
 
 if __name__ == "__main__":
     unittest.main()

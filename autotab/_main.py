@@ -175,8 +175,6 @@ class PipelineMixin(object):
     child_iter_ = AttributeNotSetYet()
     val_scores_ = AttributeNotSetYet()
     metrics_best_ = AttributeNotSetYet()
-    #parent_seeds_ = AttributeNotSetYet()
-    #child_seeds_ = AttributeNotSetYet()
     child_val_scores_ = AttributeNotSetYet()
     baseline_results_ = AttributeNotSetYet()
     start_time_ = AttributeNotSetYet()
@@ -1121,9 +1119,6 @@ class OptimizePipeline(PipelineMixin):
         metrics_best = np.full((self.parent_iterations, len(self.monitor)), np.nan)
         self.metrics_best_ = pd.DataFrame(metrics_best, columns=self.monitor_names)
 
-        #self.parent_seeds_ = np.random.randint(0, 10000, self.parent_iterations)
-        #self.child_seeds_ = np.random.randint(0, 10000, self.max_child_iters)
-
         # each row indicates parent iteration, column indicates child iteration
         self.child_val_scores_ = np.full((self.parent_iterations,
                                           self.max_child_iters),
@@ -1308,21 +1303,21 @@ class OptimizePipeline(PipelineMixin):
         if previous_results is not None:
             optimizer.add_previous_results(previous_results)
 
+        res = optimizer.fit(x=train_x, y=train_y, validation_data = (val_x, val_y))
+
+        setattr(self, 'optimizer_', optimizer)
+
+        if process_results:
+            self.proces_hpo_results(optimizer)
+
         self.save_results()
 
         self.report()
 
         self._save_config()
 
-        res = optimizer.fit(x=train_x, y=train_y, validation_data = (val_x, val_y))
-
-        if process_results:
-            self.proces_hpo_results(optimizer)
-
         if finish_wb:
             self.wb_finish()
-
-        setattr(self, 'optimizer_', optimizer)
 
         return res
 
@@ -1346,13 +1341,16 @@ class OptimizePipeline(PipelineMixin):
             if self.child_iterations>0:
                 df['hyperparas'] = [list(val['model'].values())[0] for val in self.parent_suggestions_.values()]
 
-            table = wandb.Table(data=df, allow_mixed_types=True,
+            result = wandb.Table(data=df, allow_mixed_types=True,
                                 columns=df.columns.tolist())
 
-            self.wb_run_.log({"result": table})
+            self.wb_run_.log({"result": result})
 
             # histograms of explored models, transformations
-            self.wb_run_.log({'model_histogram': wandb.plot.histogram(table, "model",
+            models = wandb.Table(
+                data=pd.DataFrame(df["model"]), allow_mixed_types=True,
+                                columns=["model"])
+            self.wb_run_.log({'model_histogram': wandb.plot.histogram(models, "model",
                                                             title="Explored Models")})
 
             if self.child_iter_>0:
@@ -2513,11 +2511,6 @@ class OptimizePipeline(PipelineMixin):
                 self.child_val_scores_,
                 columns=[f'child_iter_{i}' for i in range(self.max_child_iters)]).to_csv(fpath)
 
-            #fpath = os.path.join(self.path, 'child_seeds.csv')
-            #pd.DataFrame(self.child_seeds_, columns=['child_seeds']).to_csv(fpath, index=False)
-
-            #fpath = os.path.join(self.path, 'parent_seeds.csv')
-            #pd.DataFrame(self.parent_seeds_, columns=['parent_seeds']).to_csv(fpath, index=False)
         return
 
     def metric_report(self, metric_name: str) -> str:
@@ -3152,7 +3145,8 @@ class OptimizePipeline(PipelineMixin):
             test_y=None,
             model_name=None
     ) -> None:
-        """makes predictions from model on training and test data.
+        """
+        makes predictions from model on training and test data.
         if model_name is given, model's predictions are saved in 'taylor_plot_data_'
         dictionary
         """
@@ -3333,7 +3327,6 @@ class OptimizePipeline(PipelineMixin):
                 model=model_config,
                 train_x=train_x,
                 train_y=train_y,
-                #validation_data=(val_x, val_y),
                 test_x=test_x,
                 test_y = test_y,
                 x_transformation=pipeline['x_transformation'],
@@ -3343,8 +3336,10 @@ class OptimizePipeline(PipelineMixin):
                 verbosity=verbosity,
             )
 
+            if metric_name == self.eval_metric_name:
+                metric_name = self.eval_metric
             bst_models.loc[idx, 'test_score'] = self.evaluate_model(
-                model, test_x, test_y, metric_name=met_name)
+                model, test_x, test_y, metric_name=metric_name)
 
         if self.use_wb:
             table = wandb.Table(data=bst_models, allow_mixed_types=True)
@@ -3640,10 +3635,7 @@ class OptimizePipeline(PipelineMixin):
         model_maker = make_model(**self.model_kwargs)
         data_config = model_maker.data_config
 
-        if isinstance(y, (pd.DataFrame, pd.Series)):
-            y = y.values
-        if y is not None:
-            assert isinstance(y, np.ndarray)
+        data_config.pop('category', None)
 
         if x is None:
             # case 3: only data are given
@@ -3778,8 +3770,6 @@ class OptimizePipeline(PipelineMixin):
                     train_y = train_y.values
 
                 val_x, val_y = validation_data
-                if isinstance(val_y, (pd.DataFrame, pd.Series)):
-                    val_y = val_y.values
 
         if save:
             self._save_data(train_x, train_y, val_x, val_y, 'validation', save_name)
@@ -3824,6 +3814,10 @@ class OptimizePipeline(PipelineMixin):
                     outputs = outputs.astype(int)
                 if self.category == "DL" and self.num_classes == 2:
                     outputs = np.argmax(outputs, 1).reshape(-1, 1)
+
+        if isinstance(outputs, (pd.DataFrame, pd.Series)):
+            outputs = outputs.values
+
         return outputs
 
     def plot_convergence(
